@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //---------------------------------------------------------------------------
@@ -2388,7 +2388,6 @@ BOOL WINAPI CPluginFSInterface::CopyOrMoveFromFS(BOOL Copy, int Mode,
         {
             if ((Mode == 1) || (Mode == 2))
             {
-                int Panel;
                 if (GetPanel(Panel, true))
                 {
                     char Buf[MAX_PATH];
