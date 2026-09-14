@@ -26,3 +26,16 @@ Místo pomalého počítání kontrolního součtu celého (potenciálně gigaba
 1. Win32 metadata souboru archivu (`ftLastWriteTime` s přesností 100 ns + 64bitová velikost `nFileSize`).
 2. Metadata souboru uvnitř archivu z centrálního adresáře ZIPu (`f->Size`, `f->LastWrite`).
 Tento přístup je okamžitý (0 ms) a 100% spolehlivě detekuje jak výměnu celého ZIP souboru na disku, tak modifikaci konkrétní položky v archivu.
+
+---
+
+## 🚀 3. Sestavení a nasazení binárních souborů
+
+- **Stav sestavení:** Release x64 proběhl úspěšně (0 chyb, 0 varování).
+- **Výsledná binárka:**
+  `src\vcxproj\salamander\Release_x64\salamand.exe`
+- **Co nahrát / aktualizovat:**
+  - **Pouze `salamand.exe`**.
+  - Veškeré provedené změny (detekce cesty protějšího panelu, taby, Plugin FS i oprava cache prohlížeče archivů) jsou přímo součástí jádra `salamand.exe` (soubory `mainwnd.h`, `mainwnd4.cpp`, `zip.cpp`, `fileswn5.cpp`, `fileswn7.cpp`, `fileswn8.cpp`, `fileswna.cpp` jsou kompilovány přímo do spustitelného souboru Salamanderu).
+  - Plugin `zip.spl` **není potřeba nahrávat** (v něm žádná změna neproběhla, soubor `src/zip.cpp` je interní modul jádra Salamanderu, nikoliv kód pluginu).
+
