@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 // CommentsTranslationProject: TRANSLATED
 
@@ -943,6 +943,10 @@ CCopyMoveDialog::CCopyMoveDialog(HWND parent, char* path, int pathBufSize, char*
                                  BOOL allowChangeTarget)
     : CCommonDialog(HLanguage, history ? IDD_COPYMOVEDIALOG_CB : IDD_COPYMOVEDIALOG, parent)
 {
+    COPYMOVE_LOG("COPYMOVE-DEBUG [dialogs3] CCopyMoveDialog::ctor: path=\"" << (path ? path : "<null>")
+                                                                       << "\" history=" << (void*)history
+                                                                       << " count=" << historyCount
+                                                                       << " hist0=\"" << (history && historyCount > 0 && history[0] ? history[0] : "<none>") << "\"");
     DirectoryHelper = FALSE;
     AllowChangeTarget = allowChangeTarget;
     NameAutoCompleteMode = helpID == IDD_CREATEDIRDIALOG || helpID == IDD_RENAMEDIALOG;
@@ -985,6 +989,8 @@ void CCopyMoveDialog::SetSelectionEnd(int selectionEnd)
 void CCopyMoveDialog::Transfer(CTransferInfo& ti)
 {
     CALL_STACK_MESSAGE1("CCopyMoveDialog::Transfer()");
+    COPYMOVE_LOG("COPYMOVE-DEBUG [dialogs3] CCopyMoveDialog::Transfer: Type=" << (ti.Type == ttDataToWindow ? "DataToWindow" : "WindowToData")
+                                                                         << " Path=\"" << (Path ? Path : "<null>") << "\"");
     if (History != NULL)
     {
         HWND hWnd;
@@ -995,6 +1001,10 @@ void CCopyMoveDialog::Transfer(CTransferInfo& ti)
                 LoadComboFromStdHistoryValues(hWnd, History, HistoryCount);
                 SendMessage(hWnd, CB_LIMITTEXT, PathBufSize - 1, 0);
                 SetControlTextUtf8(hWnd, Path);
+                char readBack[SAL_MAX_PATH];
+                readBack[0] = 0;
+                GetControlTextUtf8(hWnd, readBack, SAL_MAX_PATH);
+                COPYMOVE_LOG("COPYMOVE-DEBUG [dialogs3] CCopyMoveDialog::Transfer: after SetControlTextUtf8, readBack=\"" << readBack << "\"");
             }
             else
             {

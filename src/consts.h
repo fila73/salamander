@@ -4,6 +4,25 @@
 #pragma once
 
 #include <string>
+#include <sstream>
+
+inline void SalCopyMoveDebugLog(const std::string& msg)
+{
+    OutputDebugStringA(msg.c_str());
+    OutputDebugStringA("\n");
+    char tempPath[MAX_PATH];
+    if (GetTempPathA(MAX_PATH, tempPath))
+    {
+        std::string logFile = std::string(tempPath) + "samandarin_copymove_debug.log";
+        FILE* f = fopen(logFile.c_str(), "a");
+        if (f)
+        {
+            fprintf(f, "%s\n", msg.c_str());
+            fclose(f);
+        }
+    }
+}
+#define COPYMOVE_LOG(expr) do { std::ostringstream _oss; _oss << expr; SalCopyMoveDebugLog(_oss.str()); } while(0)
 
 // Maximum Win32 long path buffer size, including terminating null.
 #ifndef SAL_MAX_PATH

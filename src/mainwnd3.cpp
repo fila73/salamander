@@ -7440,6 +7440,39 @@ MENU_TEMPLATE_ITEM AddToSystemMenu[] =
                 operationTarget = detachedTargetOperation
                                       ? SelectDetachedOperationTarget(activePanel, command)
                                       : GetNonActivePanel();
+
+                // DEBUG: Copy/Move target path investigation
+                {
+                    const char* srcType = activePanel->Is(ptDisk) ? "Disk" : activePanel->Is(ptZIPArchive) ? "ZIP"
+                                                                         : activePanel->Is(ptPluginFS)     ? "PluginFS"
+                                                                                                           : "Unknown";
+                    char srcPath[512];
+                    srcPath[0] = 0;
+                    activePanel->GetGeneralPath(srcPath, 512);
+                    COPYMOVE_LOG("COPYMOVE-DEBUG [mainwnd3] command=" << command
+                                                                << " activePanel=" << (void*)activePanel
+                                                                << " type=" << srcType
+                                                                << " path=\"" << srcPath << "\""
+                                                                << " detached=" << detachedTargetOperation);
+                    if (operationTarget != NULL)
+                    {
+                        const char* tgtType = operationTarget->Is(ptDisk) ? "Disk" : operationTarget->Is(ptZIPArchive) ? "ZIP"
+                                                                                   : operationTarget->Is(ptPluginFS)   ? "PluginFS"
+                                                                                                                       : "Unknown";
+                        char tgtPath[512];
+                        tgtPath[0] = 0;
+                        operationTarget->GetGeneralPath(tgtPath, 512);
+                        COPYMOVE_LOG("COPYMOVE-DEBUG [mainwnd3] operationTarget=" << (void*)operationTarget
+                                                                            << " type=" << tgtType
+                                                                            << " path=\"" << tgtPath << "\""
+                                                                            << " GetPath=\"" << (operationTarget->Is(ptDisk) ? operationTarget->GetPath() : "<non-disk>") << "\"");
+                    }
+                    else
+                    {
+                        COPYMOVE_LOG("COPYMOVE-DEBUG [mainwnd3] operationTarget=NULL");
+                    }
+                }
+
                 if (operationTarget == NULL)
                     return 0;
             }

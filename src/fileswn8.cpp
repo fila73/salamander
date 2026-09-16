@@ -379,7 +379,16 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
             if (copyToSelectedDirs)
                 lstrcpyn(path, selectedTargetPaths[0].c_str(), SAL_MAX_PATH);
             else
-                target->GetGeneralPath(path, SAL_MAX_PATH);
+            {
+                BOOL gpRet = target->GetGeneralPath(path, SAL_MAX_PATH);
+                const char* tgtType = target->Is(ptDisk) ? "Disk" : target->Is(ptZIPArchive) ? "ZIP"
+                                                                   : target->Is(ptPluginFS)   ? "PluginFS"
+                                                                                              : "Unknown";
+                COPYMOVE_LOG("COPYMOVE-DEBUG [fileswn8] FilesAction: target=" << (void*)target
+                                                                       << " type=" << tgtType
+                                                                       << " GetGeneralPath=" << gpRet
+                                                                       << " \"" << path << "\"");
+            }
             if (target->Is(ptDisk) && !copyToSelectedDirs)
             {
                 SalPathAppend(path, "*.*", SAL_MAX_PATH);
@@ -605,6 +614,7 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
             {
                 if (strlen(path) >= SAL_MAX_PATH)
                     path[0] = 0; // the path is too long; not an ideal solution but I'm not up for a better one now :(
+                COPYMOVE_LOG("COPYMOVE-DEBUG [fileswn8] FilesAction: FINAL path for dialog=\"" << path << "\"");
                 res = (int)CCopyMoveMoreDialog(HWindow, path, SAL_MAX_PATH,
                                                (type == atCopy) ? LoadStr(IDS_COPY) : LoadStr(IDS_MOVE), &str,
                                                (type == atCopy) ? IDD_COPYDIALOG : IDD_MOVEDIALOG,

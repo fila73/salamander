@@ -550,8 +550,18 @@ void CFilesWindow::PluginFSFilesAction(CPluginFSActionType type, CFilesWindow* t
             targetPath[0] = 0;
             if (target != NULL)
             {
+                const char* tgtType = target->Is(ptDisk) ? "Disk" : target->Is(ptZIPArchive) ? "ZIP"
+                                                                   : target->Is(ptPluginFS)   ? "PluginFS"
+                                                                                              : "Unknown";
+                COPYMOVE_LOG("COPYMOVE-DEBUG [fileswna] PluginFSAction: target=" << (void*)target << " type=" << tgtType);
+
                 if (target->Is(ptDisk))
-                    target->GetGeneralPath(targetPath, SAL_MAX_PATH);
+                {
+                    BOOL gpRet = target->GetGeneralPath(targetPath, SAL_MAX_PATH);
+                    COPYMOVE_LOG("COPYMOVE-DEBUG [fileswna] PluginFSAction: disk target GetGeneralPath=" << gpRet
+                                                                                                   << " \"" << targetPath << "\""
+                                                                                                   << " GetPath=\"" << target->GetPath() << "\"");
+                }
                 else if (target->Is(ptZIPArchive))
                 {
                     target->GetGeneralPath(targetPath, SAL_MAX_PATH);
@@ -560,6 +570,7 @@ void CFilesWindow::PluginFSFilesAction(CPluginFSActionType type, CFilesWindow* t
                     int format = PackerFormatConfig.PackIsArchive(target->GetZIPArchive());
                     if (format == 0 || !PackerFormatConfig.GetUsePacker(format - 1))
                         targetPath[0] = 0;
+                    COPYMOVE_LOG("COPYMOVE-DEBUG [fileswna] PluginFSAction: ZIP target, path=\"" << targetPath << "\"");
                 }
                 else if (target->Is(ptPluginFS) && target->GetPluginFS()->NotEmpty() &&
                          target->GetPluginFS()->IsServiceSupported(FS_SERVICE_COPYFROMDISKTOFS))
@@ -567,6 +578,7 @@ void CFilesWindow::PluginFSFilesAction(CPluginFSActionType type, CFilesWindow* t
                     char fallbackPath[SAL_MAX_PATH];
                     target->GetGeneralPath(targetPath, SAL_MAX_PATH);
                     lstrcpyn(fallbackPath, targetPath, SAL_MAX_PATH);
+                    COPYMOVE_LOG("COPYMOVE-DEBUG [fileswna] PluginFSAction: PluginFS target, pre-CopyOrMove=\"" << targetPath << "\"");
                     if (!target->GetPluginFS()->CopyOrMoveFromDiskToFS(TRUE, 1,
                                                                        target->GetPluginFS()->GetPluginFSName(),
                                                                        HWindow, NULL, NULL, NULL,
@@ -578,17 +590,35 @@ void CFilesWindow::PluginFSFilesAction(CPluginFSActionType type, CFilesWindow* t
                     }
                     // Convert the path to external format before showing it in the dialog.
                     PluginFSConvertPathToExternal(targetPath);
+                    COPYMOVE_LOG("COPYMOVE-DEBUG [fileswna] PluginFSAction: PluginFS target, post-CopyOrMove=\"" << targetPath << "\"");
+                }
+                else
+                {
+                    COPYMOVE_LOG("COPYMOVE-DEBUG [fileswna] PluginFSAction: target not suitable for path extraction");
                 }
             }
+            else
+            {
+                COPYMOVE_LOG("COPYMOVE-DEBUG [fileswna] PluginFSAction: target=NULL");
+            }
+
+            COPYMOVE_LOG("COPYMOVE-DEBUG [fileswna] PluginFSAction: pre-CopyOrMoveFromFS targetPath=\"" << targetPath << "\"");
 
             BOOL ret = GetPluginFS()->CopyOrMoveFromFS(copy, 1, GetPluginFS()->GetPluginFSName(),
                                                        HWindow, panel, count - selectedDirs,
                                                        selectedDirs, targetPath, operationMask,
                                                        cancelOrHandlePath, NULL);
+
+            COPYMOVE_LOG("COPYMOVE-DEBUG [fileswna] PluginFSAction: post-CopyOrMoveFromFS ret=" << ret
+                                                                                           << " cancelOrHandlePath=" << cancelOrHandlePath
+                                                                                           << " targetPath=\"" << targetPath << "\"");
+
             while (!ret)
             {
                 if (!cancelOrHandlePath) // standard dialog
                 {
+                    COPYMOVE_LOG("COPYMOVE-DEBUG [fileswna] PluginFSAction: showing dialog with targetPath=\"" << targetPath << "\"");
+
                     // Plug-in-owned standard dialogs do not create COperations here; their scheduling
                     // policy must be handled by the plug-in operation implementation.
                     int dialogResult = (int)CCopyMoveDialog(

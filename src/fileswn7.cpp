@@ -840,13 +840,35 @@ void CFilesWindow::UnpackZIPArchive(CFilesWindow* target, BOOL deleteOp, const c
 
         //---  obtain the target directory
         if (!deleteOp && target == NULL && tgtPath == NULL)
+        {
             target = MainWindow->GetOtherPanel(this);
+            COPYMOVE_LOG("COPYMOVE-DEBUG [fileswn7] UnpackZIP: target was NULL, fallback GetOtherPanel -> " << (void*)target);
+        }
+
+        // DEBUG: log target state before path extraction
+        {
+            const char* tgtType = target == NULL ? "NULL"
+                                  : target->Is(ptDisk) ? "Disk"
+                                  : target->Is(ptZIPArchive) ? "ZIP"
+                                  : target->Is(ptPluginFS) ? "PluginFS"
+                                  : "Unknown";
+            COPYMOVE_LOG("COPYMOVE-DEBUG [fileswn7] UnpackZIP: target=" << (void*)target << " type=" << tgtType);
+            if (target != NULL && target->Is(ptDisk))
+            {
+                COPYMOVE_LOG("COPYMOVE-DEBUG [fileswn7] UnpackZIP: target->GetPath()=\"" << target->GetPath() << "\"");
+                char gpBuf[512];
+                gpBuf[0] = 0;
+                BOOL gpRet = target->GetGeneralPath(gpBuf, 512);
+                COPYMOVE_LOG("COPYMOVE-DEBUG [fileswn7] UnpackZIP: target->GetGeneralPath()=" << gpRet << " \"" << gpBuf << "\"");
+            }
+        }
 
         if (target != NULL && target->Is(ptDisk))
         {
             strcpy(path, target->GetPath());
 
             target->UserWorkedOnThisPath = TRUE; // default action = operate with the path in the target panel
+            COPYMOVE_LOG("COPYMOVE-DEBUG [fileswn7] UnpackZIP: disk target, path=\"" << path << "\"");
         }
         else
         {
@@ -865,6 +887,7 @@ void CFilesWindow::UnpackZIPArchive(CFilesWindow* target, BOOL deleteOp, const c
                 {
                     path[0] = 0;
                 }
+                COPYMOVE_LOG("COPYMOVE-DEBUG [fileswn7] UnpackZIP: ZIP target, path=\"" << path << "\" format=" << format);
             }
             else
             {
@@ -874,6 +897,7 @@ void CFilesWindow::UnpackZIPArchive(CFilesWindow* target, BOOL deleteOp, const c
                     char fallbackPath[MAX_PATH];
                     target->GetGeneralPath(path, MAX_PATH);
                     lstrcpyn(fallbackPath, path, MAX_PATH);
+                    COPYMOVE_LOG("COPYMOVE-DEBUG [fileswn7] UnpackZIP: PluginFS target, pre-CopyOrMove path=\"" << path << "\"");
                     if (!target->GetPluginFS()->CopyOrMoveFromDiskToFS(TRUE, 1,
                                                                        target->GetPluginFS()->GetPluginFSName(),
                                                                        HWindow, NULL, NULL, NULL,
@@ -902,9 +926,16 @@ void CFilesWindow::UnpackZIPArchive(CFilesWindow* target, BOOL deleteOp, const c
 
                         target->UserWorkedOnThisPath = TRUE; // default action = operate with the path in the target panel
                     }
+                    COPYMOVE_LOG("COPYMOVE-DEBUG [fileswn7] UnpackZIP: PluginFS target, post-CopyOrMove path=\"" << path << "\"");
+                }
+                else
+                {
+                    COPYMOVE_LOG("COPYMOVE-DEBUG [fileswn7] UnpackZIP: no suitable target, path stays empty");
                 }
             }
         }
+
+        COPYMOVE_LOG("COPYMOVE-DEBUG [fileswn7] UnpackZIP: FINAL path for dialog=\"" << path << "\"");
 
         CCopyMoveDialog dlg(HWindow, path, SAL_MAX_PATH, LoadStr(IDS_UNPACKCOPY), &str, IDD_COPYDIALOG,
                             Configuration.CopyHistory, COPY_HISTORY_SIZE, TRUE,
