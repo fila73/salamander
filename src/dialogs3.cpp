@@ -121,23 +121,22 @@ void SetControlTextUtf8(HWND ctrl, const char* text)
         text = "";
 
     HWND target = ResolveComboEditControl(ctrl);
-    if (GetACP() != CP_UTF8 && !IsWindowUnicode(target))
-    {
-        SendMessage(ctrl, WM_SETTEXT, 0, (LPARAM)text);
-        return;
-    }
+    std::wstring wide;
+    bool hasWide = Utf8ToWideString(text, -1, wide);
+    const wchar_t* wideStr = hasWide ? (wide.empty() ? L"" : wide.c_str()) : L"";
 
-    if (IsWindowUnicode(target))
+    if (hasWide)
     {
-        std::wstring wide;
-        if (Utf8ToWideString(text, -1, wide))
-        {
-            SetWindowTextW(target, wide.empty() ? L"" : wide.c_str());
-            return;
-        }
+        SendMessageW(ctrl, WM_SETTEXT, 0, (LPARAM)wideStr);
+        if (target != ctrl)
+            SetWindowTextW(target, wideStr);
     }
-
-    SendMessage(target, WM_SETTEXT, 0, (LPARAM)text);
+    else
+    {
+        SendMessageA(ctrl, WM_SETTEXT, 0, (LPARAM)text);
+        if (target != ctrl)
+            SetWindowTextA(target, text);
+    }
 }
 
 LRESULT ComboAddStringUtf8(HWND combo, const char* text)
@@ -972,6 +971,7 @@ CCopyMoveDialog::CCopyMoveDialog(HWND parent, char* path, int pathBufSize, char*
     SetHelpID(helpID); // the dialog serves multiple purposes - set the proper helpID
     SelectionEnd = -1; // -1 = select all
     SelectionEndChars = -1;
+    InitialFocus = TRUE;
 }
 
 void CCopyMoveDialog::SetSelectionEnd(int selectionEnd)
@@ -1048,6 +1048,10 @@ CCopyMoveDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         }
 
         INT_PTR ret = CCommonDialog::DialogProc(uMsg, wParam, lParam);
+        char afterInit[SAL_MAX_PATH];
+        afterInit[0] = 0;
+        GetControlTextUtf8(GetDlgItem(HWindow, IDE_PATH), afterInit, SAL_MAX_PATH);
+        COPYMOVE_LOG("COPYMOVE-DEBUG [dialogs3] WM_INITDIALOG: after CCommonDialog::DialogProc, text=\"" << afterInit << "\"");
         // umime vybirat pouze nazev bez tecky a pripony
         int selectionEnd = SelectionEnd;
         if (SelectionEndChars >= 0)
@@ -1077,8 +1081,46 @@ CCopyMoveDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     case WM_USER_ENABLEPATHAUTOCOMPLETE:
     {
+        char beforeAC[SAL_MAX_PATH];
+        beforeAC[0] = 0;
+        GetControlTextUtf8(GetDlgItem(HWindow, IDE_PATH), beforeAC, SAL_MAX_PATH);
+        COPYMOVE_LOG("COPYMOVE-DEBUG [dialogs3] WM_USER_ENABLEPATHAUTOCOMPLETE: before, text=\"" << beforeAC << "\"");
         EnablePathAutoComplete(GetDlgItem(HWindow, IDE_PATH), NameAutoCompleteMode);
+        char afterAC[SAL_MAX_PATH];
+        afterAC[0] = 0;
+        GetControlTextUtf8(GetDlgItem(HWindow, IDE_PATH), afterAC, SAL_MAX_PATH);
+        COPYMOVE_LOG("COPYMOVE-DEBUG [dialogs3] WM_USER_ENABLEPATHAUTOCOMPLETE: after, text=\"" << afterAC << "\"");
         return 0;
+    }
+
+    case WM_COMMAND:
+    {
+        if (LOWORD(wParam) == IDE_PATH)
+        {
+            int code = HIWORD(wParam);
+            if (code == CBN_SETFOCUS && InitialFocus)
+            {
+                InitialFocus = FALSE;
+                char chkText[SAL_MAX_PATH];
+                chkText[0] = 0;
+                GetControlTextUtf8(GetDlgItem(HWindow, IDE_PATH), chkText, SAL_MAX_PATH);
+                if (Path != NULL && Path[0] != 0 && strcmp(chkText, Path) != 0)
+                {
+                    COPYMOVE_LOG("COPYMOVE-DEBUG [dialogs3] Restoring Path on initial CBN_SETFOCUS: was \"" << chkText << "\" restoring \"" << Path << "\"");
+                    SetControlTextUtf8(GetDlgItem(HWindow, IDE_PATH), Path);
+                    int selEnd = SelectionEnd;
+                    if (SelectionEndChars >= 0)
+                        selEnd = SelectionEndChars;
+                    PostMessage(GetDlgItem(HWindow, IDE_PATH), CB_SETEDITSEL, 0, MAKELPARAM(0, selEnd));
+                }
+            }
+            char curText[SAL_MAX_PATH];
+            curText[0] = 0;
+            GetControlTextUtf8(GetDlgItem(HWindow, IDE_PATH), curText, SAL_MAX_PATH);
+            int curSel = (int)SendMessage(GetDlgItem(HWindow, IDE_PATH), CB_GETCURSEL, 0, 0);
+            COPYMOVE_LOG("COPYMOVE-DEBUG [dialogs3] WM_COMMAND IDE_PATH: notif=" << code << " curSel=" << curSel << " text=\"" << curText << "\"");
+        }
+        break;
     }
 
 
