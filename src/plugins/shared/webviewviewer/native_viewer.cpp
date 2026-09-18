@@ -1675,6 +1675,9 @@ private:
         case WM_COMMAND:
             HandleCommand(LOWORD(wParam), HIWORD(wParam));
             return 0;
+        case WM_SETFOCUS:
+            FocusBrowser();
+            return 0;
         case WM_KEYDOWN:
             if (wParam == VK_ESCAPE)
                 DestroyWindow(window_);
@@ -1723,10 +1726,18 @@ private:
         SetWindowTextW(status_, (parameters_->loading + L" " + std::to_wstring(loadProgress_) + L" %").c_str());
     }
 
+    void FocusBrowser()
+    {
+        if (controller_ != nullptr && browserVisible_)
+            controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+    }
+
     void CompletePrismDisplay()
     {
         SetWindowTextW(status_, parameters_->ready.c_str());
         ShowPrismBrowser();
+        if (GetActiveWindow() == window_ || GetForegroundWindow() == window_)
+            FocusBrowser();
         loadProgress_ = 100;
     }
 
@@ -1737,6 +1748,8 @@ private:
         {
             controller_->put_IsVisible(TRUE);
             browserVisible_ = true;
+            if (GetActiveWindow() == window_ || GetForegroundWindow() == window_)
+                FocusBrowser();
         }
     }
 
@@ -1958,6 +1971,8 @@ private:
                         {
                             self->controller_->put_IsVisible(TRUE);
                             self->browserVisible_ = true;
+                            if (GetActiveWindow() == self->window_ || GetForegroundWindow() == self->window_)
+                                self->FocusBrowser();
                         }
                         self->loadProgress_ = 100;
                         return S_OK;
@@ -3043,6 +3058,13 @@ DWORD WINAPI ViewerHostThread(void* readyEvent)
                     command = IDM_NV_ZOOM_IN;
                 else if (message.wParam == VK_OEM_MINUS || message.wParam == VK_SUBTRACT)
                     command = IDM_NV_ZOOM_OUT;
+                else if (message.wParam == 'F')
+                {
+                    ViewerWindow* viewer = IsWindow(viewerWindow)
+                        ? reinterpret_cast<ViewerWindow*>(GetWindowLongPtrW(viewerWindow, GWLP_USERDATA)) : nullptr;
+                    if (viewer != nullptr)
+                        viewer->FocusBrowser();
+                }
             }
             if (command != 0)
             {

@@ -159,9 +159,11 @@ def main() -> None:
         or 'value == L"salamander-prism-theme-ready"' not in native_viewer
         or "self->ShowPrismBrowser()" not in native_viewer
         or "ApplyControllerZoom()" not in native_viewer
+        or "case WM_SETFOCUS:" not in native_viewer
+        or "FocusBrowser()" not in native_viewer
     ):
         raise AssertionError(
-            "Prism must reveal only its themed page and report Ready after painted content"
+            "Prism must reveal only its themed page, manage focus, and report Ready after painted content"
         )
     if "Prism.highlightElement(code);finish();" in native_viewer:
         raise AssertionError("small Prism files must not highlight on the UI thread via NavigateToString")
