@@ -1042,6 +1042,8 @@ struct ViewerParameters
     std::wstring uiUnavailable;
     LOGFONT viewerFont = {};
     CSalamanderGeneralAbstract* general = nullptr;
+    std::wstring searchPhrase;
+    DWORD searchFlags = 0;
 };
 
 constexpr size_t kPrismTokenCount = 12;
@@ -3185,6 +3187,38 @@ bool NativeViewer_Show(const NativeViewerRequest& request)
     data->saveFailed = CopyString(request.strings.saveFailed);
     data->uiUnavailable = CopyString(request.strings.uiUnavailable);
     data->general = request.general;
+    if (request.searchPhrase != nullptr && request.searchPhrase[0] != L'\0')
+    {
+        data->searchPhrase = request.searchPhrase;
+        data->searchFlags = request.searchFlags;
+    }
+    else if (request.general != nullptr)
+    {
+        char findText[512] = {};
+        if (request.general->GetConfigParameter(SALCFG_VIEWERFINDTEXT, findText, sizeof(findText), nullptr) && findText[0] != '\0')
+        {
+            int wlen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, findText, -1, nullptr, 0);
+            UINT cp = CP_UTF8;
+            DWORD flags = MB_ERR_INVALID_CHARS;
+            if (wlen <= 0)
+            {
+                cp = CP_ACP;
+                flags = 0;
+                wlen = MultiByteToWideChar(cp, flags, findText, -1, nullptr, 0);
+            }
+            if (wlen > 1)
+            {
+                data->searchPhrase.resize(wlen - 1);
+                MultiByteToWideChar(cp, flags, findText, -1, &data->searchPhrase[0], wlen);
+            }
+            DWORD caseSens = 0;
+            DWORD wholeWords = 0;
+            if (request.general->GetConfigParameter(SALCFG_VIEWERFINDCASE, &caseSens, sizeof(caseSens), nullptr) && caseSens)
+                data->searchFlags |= SALVIEWER_SEARCH_CASE_SENSITIVE;
+            if (request.general->GetConfigParameter(SALCFG_VIEWERFINDWHOLEWORDS, &wholeWords, sizeof(wholeWords), nullptr) && wholeWords)
+                data->searchFlags |= SALVIEWER_SEARCH_WHOLE_WORDS;
+        }
+    }
 
     DWORD hostThreadId = 0;
     if (!EnsureViewerHost(&hostThreadId))

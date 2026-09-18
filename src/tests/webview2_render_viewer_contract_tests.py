@@ -484,6 +484,27 @@ def main() -> None:
     ):
         raise AssertionError("file-size checks must remain Unicode and long-path safe")
 
+    spl_gen = (REPOSITORY_ROOT / "src" / "plugins" / "shared" / "spl_gen.h").read_text(encoding="utf-8")
+    if (
+        "SALCFG_VIEWERFINDTEXT" not in spl_gen
+        or "SALCFG_VIEWERFINDCASE" not in spl_gen
+        or "SALCFG_VIEWERFINDWHOLEWORDS" not in spl_gen
+        or "SearchPhrase" not in spl_gen
+        or "SearchFlags" not in spl_gen
+    ):
+        raise AssertionError("spl_gen.h must define viewer find configuration parameters and selection fields")
+
+    plugins1 = (REPOSITORY_ROOT / "src" / "plugins1.cpp").read_text(encoding="utf-8")
+    if (
+        "GlobalFindDialog.Text" not in plugins1
+        or "selectionData.SearchPhrase" not in plugins1
+    ):
+        raise AssertionError("plugins1.cpp must propagate find search phrase to viewer plugins")
+
+    zip_cpp = (REPOSITORY_ROOT / "src" / "zip.cpp").read_text(encoding="utf-8")
+    if "case SALCFG_VIEWERFINDTEXT:" not in zip_cpp:
+        raise AssertionError("zip.cpp must handle SALCFG_VIEWERFINDTEXT in GetConfigParameter")
+
     print("WebView2 render viewer source-contract tests passed.")
 
 
