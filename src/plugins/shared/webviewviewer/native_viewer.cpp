@@ -1669,6 +1669,15 @@ private:
             UpdateViewMenuChecks();
             ApplyTheme();
             BeginBrowserInitialization();
+            if (parameters_->kind == NativeViewerKind::PrismText)
+                StartPreparation(false);
+            else if (parameters_->kind == NativeViewerKind::RenderDocument)
+            {
+                const std::wstring extension = ExtensionOf(parameters_->filePath);
+                if (extension == L".md" || extension == L".markdown" || extension == L".mdown" ||
+                    extension == L".mkd" || extension == L".mdx")
+                    StartPreparation(true);
+            }
             return 0;
         }
         case WM_SIZE:
@@ -1968,6 +1977,13 @@ private:
                                 L"}';document.head.appendChild(s);}})();";
                             self->webView_->ExecuteScript(script.c_str(), nullptr);
                         }
+                        if (!self->parameters_->searchPhrase.empty())
+                        {
+                            std::wstring findScript = L"window.find(" + JsonString(self->parameters_->searchPhrase) +
+                                L", " + ((self->parameters_->searchFlags & SALVIEWER_SEARCH_CASE_SENSITIVE) ? L"true" : L"false") +
+                                L", false, true);";
+                            self->webView_->ExecuteScript(findScript.c_str(), nullptr);
+                        }
                         SetWindowTextW(self->status_, self->parameters_->ready.c_str());
                         if (!self->browserVisible_ && self->controller_)
                         {
@@ -2021,12 +2037,44 @@ private:
                         command = IDM_NV_WRAP_LINES;
                     else if ((GetKeyState(VK_CONTROL) & 0x8000) != 0)
                     {
-                        if (virtualKey == '0' || virtualKey == VK_NUMPAD0)
+                        if (virtualKey == 'F')
+                        {
+                            args->put_Handled(TRUE);
+                            ViewerWindow* self = IsWindow(viewerWindow)
+                                ? reinterpret_cast<ViewerWindow*>(GetWindowLongPtrW(viewerWindow, GWLP_USERDATA)) : nullptr;
+                            if (self != nullptr && self->parameters_->kind == NativeViewerKind::PrismText && self->webView_)
+                                self->webView_->PostWebMessageAsJson(L"{\"type\":\"openFind\"}");
+                            return S_OK;
+                        }
+                        else if (virtualKey == '0' || virtualKey == VK_NUMPAD0)
                             command = IDM_NV_ZOOM_RESET;
                         else if (virtualKey == VK_OEM_PLUS || virtualKey == VK_ADD)
                             command = IDM_NV_ZOOM_IN;
                         else if (virtualKey == VK_OEM_MINUS || virtualKey == VK_SUBTRACT)
                             command = IDM_NV_ZOOM_OUT;
+                    }
+                    else if (virtualKey == VK_F3)
+                    {
+                        args->put_Handled(TRUE);
+                        ViewerWindow* self = IsWindow(viewerWindow)
+                            ? reinterpret_cast<ViewerWindow*>(GetWindowLongPtrW(viewerWindow, GWLP_USERDATA)) : nullptr;
+                        if (self != nullptr)
+                        {
+                            bool backward = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+                            if (self->parameters_->kind == NativeViewerKind::PrismText)
+                            {
+                                self->NavigateSearchMatch(!backward);
+                            }
+                            else if (self->parameters_->kind == NativeViewerKind::RenderDocument && self->webView_)
+                            {
+                                std::wstring phrase = self->parameters_->searchPhrase;
+                                std::wstring script = L"window.find(" + (phrase.empty() ? L"''" : JsonString(phrase)) +
+                                    L", " + ((self->parameters_->searchFlags & SALVIEWER_SEARCH_CASE_SENSITIVE) ? L"true" : L"false") +
+                                    L", " + (backward ? L"true" : L"false") + L", true);";
+                                self->webView_->ExecuteScript(script.c_str(), nullptr);
+                            }
+                        }
+                        return S_OK;
                     }
                     if (command != 0)
                     {
@@ -2069,6 +2117,12 @@ private:
                         if (value.compare(0, std::size(chunkPrefix) - 1, chunkPrefix) == 0)
                         {
                             self->HandleVirtualChunk(value);
+                            return S_OK;
+                        }
+                        constexpr wchar_t findPrefix[] = L"salamander-find:";
+                        if (value.compare(0, std::size(findPrefix) - 1, findPrefix) == 0)
+                        {
+                            self->HandleFindMessage(value.substr(std::size(findPrefix) - 1));
                             return S_OK;
                         }
                         if (self->parameters_->kind != NativeViewerKind::RenderDocument)
@@ -2318,7 +2372,19 @@ private:
                 ShowError(parameters_->openFailed, E_OUTOFMEMORY);
             return;
         }
-        if (result->generation != preparationGeneration_ || !webView_)
+        if (result->generation != preparationGeneration_)
+            return;
+        if (!webView_)
+        {
+            pendingPreparationResult_ = std::move(result);
+            return;
+        }
+        ApplyPreparationResult(std::move(result));
+    }
+
+    void ApplyPreparationResult(std::unique_ptr<PreparationResult> result)
+    {
+        if (result == nullptr || !webView_)
             return;
         if (result->error != ERROR_SUCCESS)
         {
@@ -2342,6 +2408,12 @@ private:
         virtualText_ = std::move(result->text);
         virtualLineStarts_ = std::move(result->lineStarts);
         virtualGeneration_ = result->generation;
+        if (!parameters_->searchPhrase.empty())
+        {
+            ExecuteSearch(parameters_->searchPhrase,
+                          (parameters_->searchFlags & SALVIEWER_SEARCH_CASE_SENSITIVE) != 0,
+                          (parameters_->searchFlags & SALVIEWER_SEARCH_WHOLE_WORDS) != 0, 0);
+        }
         ComPtr<ICoreWebView2_3> webView3;
         if (FAILED(webView_.As(&webView3)) || !webView3)
         {
@@ -2389,7 +2461,10 @@ private:
             L",\"selectedBackground\":" + JsonString(CssColor(parameters_->theme.selectedBackground)) +
             L",\"gutterForeground\":" + JsonString(style.gutterForeground) +
             L",\"gutterBackground\":" + JsonString(style.gutterBackground) +
-            L",\"palette\":" + JsonString(ColorPaletteName());
+            L",\"palette\":" + JsonString(ColorPaletteName()) +
+            L",\"searchPhrase\":" + JsonString(parameters_->searchPhrase) +
+            L",\"searchCaseSensitive\":" + ((parameters_->searchFlags & SALVIEWER_SEARCH_CASE_SENSITIVE) ? std::wstring(L"true") : L"false") +
+            L",\"searchWholeWords\":" + ((parameters_->searchFlags & SALVIEWER_SEARCH_WHOLE_WORDS) ? std::wstring(L"true") : L"false");
         AppendCustomPaletteJson(json, nullptr, nullptr);
         json += L"}";
         if (SUCCEEDED(webView_->PostWebMessageAsJson(json.c_str())))
@@ -2579,6 +2654,241 @@ private:
         return true;
     }
 
+    static bool IsWordChar(wchar_t c)
+    {
+        return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9') || c == L'_';
+    }
+
+    static bool IsWholeWordMatch(const std::wstring& text, size_t pos, size_t len)
+    {
+        if (pos > 0 && IsWordChar(text[pos - 1]))
+            return false;
+        if (pos + len < text.size() && IsWordChar(text[pos + len]))
+            return false;
+        return true;
+    }
+
+    static bool FindJsonString(const std::wstring& json, const wchar_t* key, std::wstring& out)
+    {
+        std::wstring needle = L"\"" + std::wstring(key) + L"\"";
+        size_t pos = json.find(needle);
+        if (pos == std::wstring::npos)
+            return false;
+        pos = json.find(L':', pos);
+        if (pos == std::wstring::npos)
+            return false;
+        pos = json.find(L'"', pos);
+        if (pos == std::wstring::npos)
+            return false;
+        size_t end = json.find(L'"', pos + 1);
+        if (end == std::wstring::npos)
+            return false;
+        out = json.substr(pos + 1, end - pos - 1);
+        return true;
+    }
+
+    static bool FindJsonBool(const std::wstring& json, const wchar_t* key, bool& out)
+    {
+        std::wstring needle = L"\"" + std::wstring(key) + L"\"";
+        size_t pos = json.find(needle);
+        if (pos == std::wstring::npos)
+            return false;
+        pos = json.find(L':', pos);
+        if (pos == std::wstring::npos)
+            return false;
+        while (pos < json.size() && (json[pos] == L':' || json[pos] == L' ' || json[pos] == L'\t'))
+            pos++;
+        if (json.compare(pos, 4, L"true") == 0)
+        {
+            out = true;
+            return true;
+        }
+        if (json.compare(pos, 5, L"false") == 0)
+        {
+            out = false;
+            return true;
+        }
+        return false;
+    }
+
+    static bool FindJsonNumber(const std::wstring& json, const wchar_t* key, size_t& out)
+    {
+        std::wstring needle = L"\"" + std::wstring(key) + L"\"";
+        size_t pos = json.find(needle);
+        if (pos == std::wstring::npos)
+            return false;
+        pos = json.find(L':', pos);
+        if (pos == std::wstring::npos)
+            return false;
+        while (pos < json.size() && (json[pos] == L':' || json[pos] == L' ' || json[pos] == L'\t'))
+            pos++;
+        size_t end = pos;
+        while (end < json.size() && iswdigit(json[end]))
+            end++;
+        if (end == pos)
+            return false;
+        uint64_t val = 0;
+        if (ParseUnsigned(json.substr(pos, end - pos), val))
+        {
+            out = static_cast<size_t>(val);
+            return true;
+        }
+        return false;
+    }
+
+    void ExecuteSearch(const std::wstring& query, bool matchCase, bool wholeWord, size_t fromLine)
+    {
+        currentSearchQuery_ = query;
+        currentSearchMatchCase_ = matchCase;
+        currentSearchWholeWord_ = wholeWord;
+        currentMatchOffsets_.clear();
+        currentMatchIndex_ = 0;
+
+        if (query.empty() || virtualText_.empty())
+        {
+            SendFindResult(0, 0, 0);
+            return;
+        }
+
+        const size_t textLen = virtualText_.size();
+        const size_t qLen = query.size();
+        if (qLen <= textLen)
+        {
+            if (matchCase)
+            {
+                size_t pos = 0;
+                while ((pos = virtualText_.find(query, pos)) != std::wstring::npos)
+                {
+                    if (!wholeWord || IsWholeWordMatch(virtualText_, pos, qLen))
+                        currentMatchOffsets_.push_back(pos);
+                    pos += 1;
+                }
+            }
+            else
+            {
+                std::wstring queryLower = query;
+                for (wchar_t& ch : queryLower)
+                    ch = towlower(ch);
+                const wchar_t firstLower = queryLower[0];
+                for (size_t i = 0; i <= textLen - qLen; ++i)
+                {
+                    if (towlower(virtualText_[i]) == firstLower)
+                    {
+                        bool match = true;
+                        for (size_t j = 1; j < qLen; ++j)
+                        {
+                            if (towlower(virtualText_[i + j]) != queryLower[j])
+                            {
+                                match = false;
+                                break;
+                            }
+                        }
+                        if (match)
+                        {
+                            if (!wholeWord || IsWholeWordMatch(virtualText_, i, qLen))
+                                currentMatchOffsets_.push_back(i);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (currentMatchOffsets_.empty())
+        {
+            SendFindResult(0, 0, 0);
+            return;
+        }
+
+        size_t targetOffset = (fromLine < virtualLineStarts_.size()) ? virtualLineStarts_[fromLine] : 0;
+        auto it = std::lower_bound(currentMatchOffsets_.begin(), currentMatchOffsets_.end(), targetOffset);
+        if (it != currentMatchOffsets_.end())
+            currentMatchIndex_ = std::distance(currentMatchOffsets_.begin(), it);
+        else
+            currentMatchIndex_ = 0;
+
+        SendCurrentMatch();
+    }
+
+    void NavigateSearchMatch(bool forward)
+    {
+        if (currentMatchOffsets_.empty())
+        {
+            if (!parameters_->searchPhrase.empty() && currentSearchQuery_.empty())
+            {
+                ExecuteSearch(parameters_->searchPhrase,
+                              (parameters_->searchFlags & SALVIEWER_SEARCH_CASE_SENSITIVE) != 0,
+                              (parameters_->searchFlags & SALVIEWER_SEARCH_WHOLE_WORDS) != 0, 0);
+                return;
+            }
+            SendFindResult(0, 0, 0);
+            return;
+        }
+
+        if (forward)
+            currentMatchIndex_ = (currentMatchIndex_ + 1) % currentMatchOffsets_.size();
+        else
+            currentMatchIndex_ = (currentMatchIndex_ + currentMatchOffsets_.size() - 1) % currentMatchOffsets_.size();
+
+        SendCurrentMatch();
+    }
+
+    void SendCurrentMatch()
+    {
+        if (currentMatchOffsets_.empty() || !webView_)
+            return;
+        size_t offset = currentMatchOffsets_[currentMatchIndex_];
+        size_t line = 0;
+        size_t col = 0;
+        if (!virtualLineStarts_.empty())
+        {
+            auto it = std::upper_bound(virtualLineStarts_.begin(), virtualLineStarts_.end(), offset) - 1;
+            line = std::distance(virtualLineStarts_.begin(), it);
+            col = offset - *it;
+        }
+        SendFindResult(line, col, currentSearchQuery_.length());
+    }
+
+    void SendFindResult(size_t line, size_t col, size_t length)
+    {
+        if (!webView_)
+            return;
+        std::wstring json = L"{\"type\":\"findResult\","
+            L"\"query\":" + JsonString(currentSearchQuery_) + L","
+            L"\"matchIndex\":" + std::to_wstring(currentMatchOffsets_.empty() ? 0 : currentMatchIndex_ + 1) + L","
+            L"\"totalCount\":" + std::to_wstring(currentMatchOffsets_.size()) + L","
+            L"\"line\":" + std::to_wstring(line) + L","
+            L"\"col\":" + std::to_wstring(col) + L","
+            L"\"length\":" + std::to_wstring(length) + L"}";
+        webView_->PostWebMessageAsJson(json.c_str());
+    }
+
+    void HandleFindMessage(const std::wstring& payload)
+    {
+        std::wstring action;
+        if (!FindJsonString(payload, L"action", action))
+            return;
+        if (action == L"search")
+        {
+            std::wstring query;
+            FindJsonString(payload, L"query", query);
+            bool matchCase = false;
+            FindJsonBool(payload, L"matchCase", matchCase);
+            bool wholeWord = false;
+            FindJsonBool(payload, L"wholeWord", wholeWord);
+            size_t fromLine = 0;
+            FindJsonNumber(payload, L"fromLine", fromLine);
+            ExecuteSearch(query, matchCase, wholeWord, fromLine);
+        }
+        else if (action == L"next")
+        {
+            NavigateSearchMatch(true);
+        }
+        else if (action == L"prev")
+        {
+            NavigateSearchMatch(false);
+        }
+    }
+
     void HandleVirtualChunk(const std::wstring& message)
     {
         constexpr wchar_t prefix[] = L"salamander-chunk:";
@@ -2643,7 +2953,14 @@ private:
         const std::wstring extension = ExtensionOf(parameters_->filePath);
         if (parameters_->kind == NativeViewerKind::PrismText)
         {
-            StartPreparation(false);
+            if (pendingPreparationResult_)
+            {
+                ApplyPreparationResult(std::move(pendingPreparationResult_));
+            }
+            else if (virtualGeneration_ == 0)
+            {
+                StartPreparation(false);
+            }
             return;
         }
 
@@ -2676,7 +2993,14 @@ private:
         if (extension == L".md" || extension == L".markdown" || extension == L".mdown" ||
             extension == L".mkd" || extension == L".mdx")
         {
-            StartPreparation(true);
+            if (pendingPreparationResult_)
+            {
+                ApplyPreparationResult(std::move(pendingPreparationResult_));
+            }
+            else if (virtualGeneration_ == 0)
+            {
+                StartPreparation(true);
+            }
             return;
         }
         std::wstring uri = MapLocalDocument();
@@ -2940,6 +3264,12 @@ private:
     std::vector<size_t> virtualLineStarts_;
     std::wstring markdownDocumentUri_;
     std::string markdownDocumentUtf8_;
+    std::unique_ptr<PreparationResult> pendingPreparationResult_;
+    std::wstring currentSearchQuery_;
+    bool currentSearchMatchCase_ = false;
+    bool currentSearchWholeWord_ = false;
+    std::vector<size_t> currentMatchOffsets_;
+    size_t currentMatchIndex_ = 0;
 };
 
 void PrewarmSharedEnvironment()

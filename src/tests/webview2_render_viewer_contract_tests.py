@@ -505,6 +505,32 @@ def main() -> None:
     if "case SALCFG_VIEWERFINDTEXT:" not in zip_cpp:
         raise AssertionError("zip.cpp must handle SALCFG_VIEWERFINDTEXT in GetConfigParameter")
 
+    if (
+        "viewer-find-bar" not in virtual_html
+        or "find-input" not in virtual_html
+        or "find-count" not in virtual_html
+        or "find-prev" not in virtual_html
+        or "find-next" not in virtual_html
+    ):
+        raise AssertionError("virtual-viewer.html must provide an integrated find bar")
+
+    if (
+        "salamander-find:" not in virtual_viewer
+        or "handleFindResult" not in virtual_viewer
+        or "navigateToMatch" not in virtual_viewer
+        or "highlightMatchInChunk" not in virtual_viewer
+        or "pendingMatch" not in virtual_viewer
+    ):
+        raise AssertionError("virtual-viewer.js must implement full-text search navigation and match highlighting")
+
+    if (
+        "ExecuteSearch" not in native_viewer
+        or "NavigateSearchMatch" not in native_viewer
+        or "salamander-find:" not in native_viewer
+        or "pendingPreparationResult_" not in native_viewer
+    ):
+        raise AssertionError("native_viewer.cpp must support full-text search and parallel preparation")
+
     print("WebView2 render viewer source-contract tests passed.")
 
 

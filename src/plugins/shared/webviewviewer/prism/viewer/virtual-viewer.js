@@ -28,6 +28,16 @@
 
   const spacer = document.getElementById("virtual-spacer");
   const status = document.getElementById("viewer-status");
+  const findBar = document.getElementById("viewer-find-bar");
+  const findInput = document.getElementById("find-input");
+  const findCount = document.getElementById("find-count");
+  const findCase = document.getElementById("find-case");
+  const findWord = document.getElementById("find-word");
+  const findPrev = document.getElementById("find-prev");
+  const findNext = document.getElementById("find-next");
+  const findClose = document.getElementById("find-close");
+  let isFindBarOpen = false;
+  let pendingMatch = null;
   let worker = null;
   const chunksByStart = new Map();
 
@@ -106,7 +116,10 @@
       selectedBackground: cssColor(message.selectedBackground, "#0066cc"),
       gutterForeground: cssColor(message.gutterForeground, "#606060"),
       gutterBackground: cssColor(message.gutterBackground, "#f3f3f3"),
-      palette: normalizePalette(message.palette)
+      palette: normalizePalette(message.palette),
+      searchPhrase: typeof message.searchPhrase === "string" ? message.searchPhrase : "",
+      searchCaseSensitive: Boolean(message.searchCaseSensitive),
+      searchWholeWords: Boolean(message.searchWholeWords)
     };
   }
 
@@ -400,6 +413,20 @@
     }
     readyFallbackTimer = window.setTimeout(markPrismReady, READY_FALLBACK_MS);
     scheduleVisibleSync();
+
+    if (settings.searchPhrase && settings.searchPhrase.length > 0) {
+      if (findInput) {
+        findInput.value = settings.searchPhrase;
+      }
+      if (findCase && settings.searchCaseSensitive) {
+        findCase.classList.add("active");
+      }
+      if (findWord && settings.searchWholeWords) {
+        findWord.classList.add("active");
+      }
+      showFindBar(false);
+      triggerSearch();
+    }
   }
 
   function onIntersection(entries) {
@@ -720,6 +747,10 @@
       state.slot.style.height = state.measuredHeight + "px";
       markPrismReady();
       scheduleVisibleSync();
+      if (pendingMatch && (pendingMatch.state === state || (state.startLine <= pendingMatch.line && pendingMatch.line < state.startLine + state.lineCount))) {
+        highlightMatchInChunk(state, pendingMatch.line, pendingMatch.col, pendingMatch.length);
+        pendingMatch = null;
+      }
     });
   }
 
@@ -1067,8 +1098,234 @@
       }
     } else if (message.type === "chunk") {
       receiveChunk(message);
+    } else if (message.type === "findResult") {
+      handleFindResult(message);
+    } else if (message.type === "openFind") {
+      showFindBar(true);
     }
   }
+
+  function showFindBar(focusInput) {
+    if (!findBar) {
+      return;
+    }
+    findBar.classList.remove("hidden");
+    isFindBarOpen = true;
+    if (focusInput && findInput) {
+      findInput.focus();
+      findInput.select();
+    }
+  }
+
+  function hideFindBar() {
+    if (!findBar) {
+      return;
+    }
+    findBar.classList.add("hidden");
+    isFindBarOpen = false;
+    window.focus();
+  }
+
+  function getFirstVisibleLine() {
+    if (!settings || !settings.lineHeight) {
+      return 0;
+    }
+    const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+    return Math.max(0, Math.floor(scrollTop / settings.lineHeight));
+  }
+
+  function triggerSearch() {
+    if (!findInput) {
+      return;
+    }
+    const query = findInput.value;
+    const matchCase = findCase ? findCase.classList.contains("active") : false;
+    const wholeWord = findWord ? findWord.classList.contains("active") : false;
+    const fromLine = getFirstVisibleLine();
+    postHost("salamander-find:" + JSON.stringify({
+      action: "search",
+      query: query,
+      matchCase: matchCase,
+      wholeWord: wholeWord,
+      fromLine: fromLine
+    }));
+  }
+
+  function triggerNextMatch(forward) {
+    postHost("salamander-find:" + JSON.stringify({
+      action: forward ? "next" : "prev"
+    }));
+  }
+
+  function handleFindResult(msg) {
+    if (!findCount) {
+      return;
+    }
+    if (!msg.query || msg.totalCount === 0) {
+      findCount.textContent = msg.query ? "0 of 0" : "";
+      if (findInput) {
+        findInput.classList.toggle("no-results", Boolean(msg.query));
+      }
+      return;
+    }
+    if (findInput) {
+      findInput.classList.remove("no-results");
+    }
+    findCount.textContent = msg.matchIndex + " of " + msg.totalCount;
+    navigateToMatch(msg.line, msg.col, msg.length);
+  }
+
+  function navigateToMatch(line, col, length) {
+    let targetState = null;
+    chunksByStart.forEach(function (state) {
+      if (state.startLine <= line && line < state.startLine + state.lineCount) {
+        targetState = state;
+      }
+    });
+
+    let targetY = 0;
+    if (targetState && targetState.slot) {
+      targetY = targetState.slot.offsetTop + (line - targetState.startLine) * (settings ? settings.lineHeight : 16);
+    } else {
+      targetY = line * (settings ? settings.lineHeight : 16);
+    }
+
+    window.scrollTo({ top: Math.max(0, targetY - 120), behavior: "auto" });
+    syncVisibleChunks();
+
+    if (targetState && targetState.mounted) {
+      highlightMatchInChunk(targetState, line, col, length);
+    } else {
+      pendingMatch = { line: line, col: col, length: length, state: targetState };
+    }
+  }
+
+  function highlightMatchInChunk(state, line, col, length) {
+    const pre = state.slot.querySelector("pre");
+    if (!pre) {
+      return;
+    }
+    const code = pre.querySelector("code");
+    if (!code) {
+      return;
+    }
+
+    const lineInChunk = line - state.startLine;
+    let curLine = 0;
+    let curCol = 0;
+    let startNode = null;
+    let startOffset = 0;
+    let endNode = null;
+    let endOffset = 0;
+
+    const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        if (node.parentElement && node.parentElement.closest(".line-numbers-rows")) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+
+    let node;
+    while ((node = walker.nextNode())) {
+      const text = node.nodeValue;
+      for (let i = 0; i < text.length; i += 1) {
+        if (curLine === lineInChunk && curCol === col && !startNode) {
+          startNode = node;
+          startOffset = i;
+        }
+        if (curLine === lineInChunk && curCol === col + length && !endNode) {
+          endNode = node;
+          endOffset = i;
+          break;
+        }
+        if (text[i] === "\n") {
+          curLine += 1;
+          curCol = 0;
+        } else {
+          curCol += 1;
+        }
+      }
+      if (startNode && endNode) {
+        break;
+      }
+    }
+
+    if (startNode) {
+      if (!endNode) {
+        endNode = startNode;
+        endOffset = Math.min(startNode.nodeValue.length, startOffset + length);
+      }
+      try {
+        const range = document.createRange();
+        range.setStart(startNode, startOffset);
+        range.setEnd(endNode, endOffset);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        if (startNode.parentElement && startNode.parentElement.scrollIntoView) {
+          startNode.parentElement.scrollIntoView({ block: "center", inline: "nearest" });
+        }
+      } catch (e) {
+        // selection range fallback
+      }
+    }
+  }
+
+  if (findInput) {
+    findInput.addEventListener("input", function () {
+      triggerSearch();
+    });
+    findInput.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        triggerNextMatch(!event.shiftKey);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        hideFindBar();
+      }
+    });
+  }
+  if (findNext) {
+    findNext.addEventListener("click", function () {
+      triggerNextMatch(true);
+    });
+  }
+  if (findPrev) {
+    findPrev.addEventListener("click", function () {
+      triggerNextMatch(false);
+    });
+  }
+  if (findClose) {
+    findClose.addEventListener("click", function () {
+      hideFindBar();
+    });
+  }
+  if (findCase) {
+    findCase.addEventListener("click", function () {
+      findCase.classList.toggle("active");
+      triggerSearch();
+    });
+  }
+  if (findWord) {
+    findWord.addEventListener("click", function () {
+      findWord.classList.toggle("active");
+      triggerSearch();
+    });
+  }
+  window.addEventListener("keydown", function (event) {
+    if (event.ctrlKey && (event.key === "f" || event.key === "F")) {
+      event.preventDefault();
+      showFindBar(true);
+    } else if (event.key === "F3") {
+      event.preventDefault();
+      triggerNextMatch(!event.shiftKey);
+    } else if (event.key === "Escape" && isFindBarOpen) {
+      event.preventDefault();
+      hideFindBar();
+    }
+  });
 
   const webview = host();
   if (webview) {
