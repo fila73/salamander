@@ -77,3 +77,27 @@ Při kopírování z disku do pluginu:
   FONT 8, "MS Shell Dlg"
   ```
 * **Podpora Dark Mode:** Každý nový dialog, okno nebo ovládací prvek musí podporovat Dark Mode (`USE_DARKMODELIB=1`).
+
+---
+
+## 5. Rozhraní prohlížečů (Viewers) a předávání vyhledávací fráze
+
+Při otevření souboru v pluginovém prohlížeči (metoda `CPluginInterfaceForViewer::ViewFile`) může Salamander předat doplňující data ve struktuře odvozené od `CSalamanderPluginViewerData`:
+
+```cpp
+struct CSalamanderPluginViewerSelectionData : public CSalamanderPluginViewerData
+{
+    DWORD SelectionMagic;       // SALAMANDER_PLUGIN_VIEWER_SELECTION_MAGIC ('SLSV')
+    const char* ViewerLabel;    // Volitelný název konkrétního prohlížeče
+    const char* SearchPhrase;   // Vyhledávaný text (např. z okna Hledat / Find)
+    DWORD SearchFlags;          // Příznaky vyhledávání:
+                                // SALVIEWER_SEARCH_CASE_SENSITIVE (0x01)
+                                // SALVIEWER_SEARCH_WHOLE_WORDS    (0x02)
+};
+```
+
+Alternativně lze aktuální vyhledávací frázi a volby z dialogu Hledat dotázat kdykoliv přes `CSalamanderGeneralAbstract::GetConfigParameter`:
+* `SALCFG_VIEWERFINDTEXT` (131) – řetězec hledaného textu (velikost bufferu `FIND_TEXT_LEN` / 512 bytů).
+* `SALCFG_VIEWERFINDCASE` (132) – `DWORD` (BOOL), shoda velikosti písmen (`TRUE`/`FALSE`).
+* `SALCFG_VIEWERFINDWHOLEWORDS` (133) – `DWORD` (BOOL), celá slova (`TRUE`/`FALSE`).
+

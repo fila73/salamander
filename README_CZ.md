@@ -24,7 +24,7 @@ Projekt navazuje na původní [Open Salamander](https://github.com/OpenSalamande
 
 ### Prohlížeče a rozšíření
 - **Interní prohlížeč (F3):** Rychlé prohlížení textových a binárních souborů, Unicode podpora, zobrazení čísel řádků a režim sledování logů (Log View Mode).
-- **Prism & WebView2 Prohlížeč:** Zvýraznění syntaxe kódu, vykreslování HTML, Markdownu, SVG, PDF a moderních formátů obrázků.
+- **Prism & WebView2 Prohlížeč:** Zvýraznění syntaxe kódu, vykreslování HTML, Markdownu, SVG, PDF a moderních formátů obrázků. Integrované celotextové vyhledávání napříč virtualizovaným textem, navigace F3 / Shift+F3, napojení na dialog Hledat a optimalizovaný rychlý start.
 - **PictView:** Prohlížeč obrázků s podporou WIC i nativních dekodérů, 3D náhledy STL a generování miniatur.
 - **Platforma Salamatrix:** Skriptování a tvorba rozšíření v JavaScriptu, Pythonu, PowerShellu, PHP a Lua.
 

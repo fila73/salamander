@@ -25,3 +25,8 @@ Tento dokument shromažďuje náměty na další vylepšení a optimalizace jád
 ### 5. Export a synchronizace nastavení přes cloud
 - **Popis**: Možnost volitelného uložení a synchronizace přenosné konfigurace (`salamand.cfg`) na vybrané cloudové úložiště (GDrive, OneDrive, S3).
 - **Přínos**: Konzistentní pracovní prostředí na všech počítačích uživatele.
+
+### 6. Podpora regulárních výrazů a značky výskytů na posuvníku v Prism Text Vieweru
+- **Popis**: Rozšíření vyhledávání v Prism Text Vieweru o regulární výrazy (Regex) a vizuální značky (markery) nalezených shod přímo na svislém posuvníku (scrollbar markery).
+- **Přínos**: Rychlá vizuální orientace ve velkých zdrojových kódech a log souborech při ladění.
+

@@ -49,3 +49,19 @@ Tento přístup je okamžitý (0 ms) a 100% spolehlivě detekuje jak výměnu ce
   - **Pouze `salamand.exe`**.
   - Veškeré provedené změny (detekce cesty protějšího panelu, taby, Plugin FS, oprava cache prohlížeče archivů i oprava ComboBoxu v copy dialogu) jsou přímo součástí jádra `salamand.exe`.
   - Plugin `zip.spl` není potřeba nahrávat.
+
+---
+
+# Větev: `feature/viewer-search-and-prism-fixes`
+
+Tato část shrnuje realizované opravy ve větvi `feature/viewer-search-and-prism-fixes` řešící issues #758, #738, #745 a #749.
+
+## 📋 Přehled realizovaných úprav
+
+| Oblast / Issue | Problém | Řešení a klíčové soubory |
+|---|---|---|
+| **Focus po otevření (#738)** | Po otevření souboru v Prism Text Vieweru nefungovalo Ctrl+F bez předchozího kliknutí myší do okna. | • `src/plugins/shared/webviewviewer/native_viewer.cpp`: zavedena obsluha `WM_SETFOCUS` volající `FocusBrowser()`, která předává fokus do WebView2 controlleru (`COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC`).<br>• Doplněno automatické zaměření při dokončení inicializace v `ShowPrismBrowser()`, `CompletePrismDisplay()` a `domContentLoadedToken_`. |
+| **Vyhledávací fráze z okna Hledat (#758)** | Při otevření souboru klávesou F3 z okna Hledat (Find) se vyhledávaný text nepředával do Prism ani WebView2 prohlížeče. | • `src/plugins/shared/spl_gen.h`: rozšířena struktura `CSalamanderPluginViewerSelectionData` o `SearchPhrase` a `SearchFlags` (`SALVIEWER_SEARCH_CASE_SENSITIVE`, `SALVIEWER_SEARCH_WHOLE_WORDS`). Přidány konfigurační parametry `SALCFG_VIEWERFINDTEXT`, `SALCFG_VIEWERFINDCASE`, `SALCFG_VIEWERFINDWHOLEWORDS`.<br>• `src/plugins1.cpp`: v `CPluginData::ViewFile` se předává vyhledávací řetězec z `GlobalFindDialog.Text` do pluginů.<br>• `src/zip.cpp`: implementována obsluha `SALCFG_VIEWERFIND*` v `GetConfigParameter`.<br>• `src/plugins/textviewer/managed_bridge.*`, `src/plugins/webview2renderviewer/managed_bridge.*`: předání fráze a příznaků do `NativeViewerRequest`.<br>• `src/plugins/shared/webviewviewer/native_viewer.cpp`: v `RenderDocument` se při načtení automaticky spouští `window.find()`; v `PrismText` se fráze předává do virtuálního prohlížeče a okamžitě vyhledá. |
+| **Vyhledávání ve virtuálním textu Prism (#745)** | Prism Text Viewer nevyhledal slova mimo aktuální viewport, protože virtuální scroller (`virtual-viewer.js`) drží v DOMu jen viditelné bloky textu. | • `src/plugins/shared/webviewviewer/native_viewer.cpp`: implementováno celotextové vyhledávání v paměti (`virtualText_`) s O(log N) mapováním na řádky a sloupce pomocí `virtualLineStarts_`.<br>• `src/plugins/shared/webviewviewer/prism/viewer/virtual-viewer.html`: přidán integrovaný Find Bar s tlačítky pro shodu velikosti písmen (Aa), celá slova (\b), přechod na další (▼/Enter/F3), předchozí (▲/Shift+Enter/Shift+F3) a zavření (✕/Esc).<br>• `src/plugins/shared/webviewviewer/prism/viewer/virtual-viewer.js`: navigace k nalezenému řádku, automatická materializace chunku a přesné zvýraznění výskytu pomocí DOM Range & Selection s vystředěním na obrazovce. |
+| **Optimalizace startu (#749)** | Prism Text Viewer a WebView2 startovaly pomalu (~3 sekundy). | • `src/plugins/shared/webviewviewer/native_viewer.cpp`: paralelní spuštění přípravy dokumentu (`StartPreparation`) přímo v `WM_CREATE` souběžně s vytvářením WebView2 controlleru. Po dokončení controlleru je dokument již načten a připraven v paměti.<br>• `src/plugins/shared/webviewviewer/prism/viewer/virtual-viewer.js`: odstraněna zbytečná zpoždění při odesílání `salamander-prism-ready` notifikace po vykreslení prvního chunku. |
+
