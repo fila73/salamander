@@ -49,3 +49,35 @@ Tento přístup je okamžitý (0 ms) a 100% spolehlivě detekuje jak výměnu ce
   - **Pouze `salamand.exe`**.
   - Veškeré provedené změny (detekce cesty protějšího panelu, taby, Plugin FS, oprava cache prohlížeče archivů i oprava ComboBoxu v copy dialogu) jsou přímo součástí jádra `salamand.exe`.
   - Plugin `zip.spl` není potřeba nahrávat.
+
+---
+
+## 📋 4. Navazující oprava: Sjednocení synchronizace ComboBoxů a oprava Find Look in (`fix/combobox-sync-and-find-lookin`)
+
+### 4.1 Kontext a identifikace příčiny
+Po opravě v `fix/archive-cache-and-copy-target-folder` bylo zaznamenáno identické chování v dialogu Hledat (`Alt+F7`) v poli "Look in" (`IDC_FIND_LOOKIN`).
+Vyšetřením zdrojových kódů bylo zjištěno:
+- V původním Open Salamanderu posílala funkce `HistoryComboBox` zprávu `WM_SETTEXT` přímo oknu ComboBoxu (`hwnd`).
+- Při dřívější migrace na UTF-8 zavedená funkce `SetHistoryControlTextUtf8` v `src/viewer.cpp` posílala `SetWindowTextW` **pouze na vnitřní Edit control**, čímž byl buffer ComboBoxu ponechán prázdný a desynchronizovaný.
+- Následný `CB_ADDSTRING` a fokus způsobil, že ComboBox přiřadil editačnímu poli položku z historie, jež začínala předvyplněným textem.
+- Tím byl odhalen skutečný kořenový problém, který dřívější úprava v `dialogs3.cpp` obcházela pomocí `InitialFocus`.
+
+### 4.2 Provedená vylepšení
+1. **Unifikace v `src/gui.h` a `src/gui.cpp`:**
+   - Zavedeny plně otestované sdílené pomocné funkce:
+     - `ResolveComboEditControl(HWND ctrl)`
+     - `Utf8ToWideString(const char* text, int count, std::wstring& wide)`
+     - `GetControlTextUtf8(HWND ctrl, char* buffer, int bufferSize)`
+     - `SetControlTextUtf8(HWND ctrl, const char* text)`
+     - `ComboAddStringUtf8(HWND combo, const char* text)`
+   - `SetControlTextUtf8` spolehlivě odesílá `WM_SETTEXT` nadřazenému ComboBoxu i synchronizuje text v podřízeném Edit oknu.
+2. **Vyčištění a oprava v `src/viewer.cpp`:**
+   - Odstraněny lokální funkce `ResolveHistoryComboEditControl`, `GetHistoryControlTextUtf8` a vadná `SetHistoryControlTextUtf8`.
+   - `HistoryComboBox` nyní používá sdílené unifikované funkce. Tím je opraveno pole "Look in" ve Find dialogu a všechna ostatní pole s historií.
+3. **Odstranění duplicit z `src/finddlg1.cpp`:**
+   - Odstraněny lokální `ResolveFindComboEditControl` a `GetFindControlTextUtf8`, nahrazeny funkcemi z `gui.h`.
+4. **Refaktoring a odstranění workaroundu z `src/dialogs.h` a `src/dialogs3.cpp`:**
+   - Odstraněn stav `InitialFocus` a obsluha `CBN_SETFOCUS` z `CCopyMoveDialog` i `CCopyMoveMoreDialog`.
+   - Odstraněny lokální duplicity funkcí pro ComboBox.
+5. **Automatizované testování:**
+   - Vytvořen nový test `src/tests/combobox_text_sync_contract_tests.py`, který úspěšně ověřuje platnost kontraktu.

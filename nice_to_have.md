@@ -25,3 +25,7 @@ Tento dokument shromažďuje náměty na další vylepšení a optimalizace jád
 ### 5. Export a synchronizace nastavení přes cloud
 - **Popis**: Možnost volitelného uložení a synchronizace přenosné konfigurace (`salamand.cfg`) na vybrané cloudové úložiště (GDrive, OneDrive, S3).
 - **Přínos**: Konzistentní pracovní prostředí na všech počítačích uživatele.
+
+### 6. Moderní inline autocomplete v ComboBoxech s historií
+- **Popis**: Možnost volitelného moderního inline našeptávání s vizuálním odlišením doporučeného textu (šedý ghost text).
+- **Přínos**: Pohodlnější zadávání často používaných cest bez nutnosti otevírat rozbalovací seznam.
