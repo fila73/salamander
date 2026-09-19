@@ -110,17 +110,18 @@ void HistoryComboBox(HWND hWindow, CTransferInfo& ti, int ctrlID, char* Text,
         {
             SendMessage(hwnd, CB_RESETCONTENT, 0, 0);
             SendMessage(hwnd, CB_LIMITTEXT, textLen - 1, 0);
-            SetControlTextUtf8(hwnd, Text);
+            int i;
+            for (i = 0; i < historySize; i++) // fill the combo-box list FIRST
+                if (history[i] != NULL)
+                    ComboAddStringUtf8(hwnd, history[i]);
+                else
+                    break;
+            SetControlTextUtf8(hwnd, Text); // set the text LAST so it is not overridden
         }
         else
         {
             if (!changeOnlyHistory)
-            {
                 GetControlTextUtf8(hwnd, Text, textLen);
-                SendMessage(hwnd, CB_RESETCONTENT, 0, 0);
-                SendMessage(hwnd, CB_LIMITTEXT, textLen - 1, 0);
-                SetControlTextUtf8(hwnd, Text);
-            }
 
             // hex mode handling
             if (hexMode)
@@ -197,16 +198,19 @@ void HistoryComboBox(HWND hWindow, CTransferInfo& ti, int ctrlID, char* Text,
                     }
                 }
             }
-        }
 
-        if (!changeOnlyHistory)
-        {
-            int i;
-            for (i = 0; i < historySize; i++) // fill the combo-box list
-                if (history[i] != NULL)
-                    ComboAddStringUtf8(hwnd, history[i]);
-                else
-                    break;
+            if (!changeOnlyHistory)
+            {
+                SendMessage(hwnd, CB_RESETCONTENT, 0, 0);
+                SendMessage(hwnd, CB_LIMITTEXT, textLen - 1, 0);
+                int i;
+                for (i = 0; i < historySize; i++) // fill the combo-box list
+                    if (history[i] != NULL)
+                        ComboAddStringUtf8(hwnd, history[i]);
+                    else
+                        break;
+                SetControlTextUtf8(hwnd, Text);
+            }
         }
     }
 }

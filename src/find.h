@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 // CommentsTranslationProject: TRANSLATED
 
@@ -759,6 +759,8 @@ protected:
 
     BOOL ProcessingEscape; // the message loop is currently handling ESCAPE -- if
                            // IDCANCEL is generated, a confirmation is shown
+    BOOL InitialFocusLookIn;
+    BOOL InitialFocusNamed;
 
     CFindLog Log; // storage for errors and information
 

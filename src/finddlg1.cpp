@@ -1766,6 +1766,9 @@ CFindDialog::CFindDialog(HWND hCenterAgainst, const char* initPath)
             break;
         }
 
+    InitialFocusLookIn = TRUE;
+    InitialFocusNamed = TRUE;
+
     // data for controls
     if (Data.NamedText[0] == 0)
         lstrcpy(Data.NamedText, "*.*");
@@ -3773,6 +3776,40 @@ CFindDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     case WM_COMMAND:
     {
+        if (LOWORD(wParam) == IDC_FIND_LOOKIN)
+        {
+            int code = HIWORD(wParam);
+            if (code == CBN_SETFOCUS && InitialFocusLookIn)
+            {
+                InitialFocusLookIn = FALSE;
+                char curText[LOOKIN_TEXT_LEN];
+                curText[0] = 0;
+                GetControlTextUtf8(GetDlgItem(HWindow, IDC_FIND_LOOKIN), curText, LOOKIN_TEXT_LEN);
+                if (Data.LookInText[0] != 0 && strcmp(curText, Data.LookInText) != 0)
+                {
+                    SetControlTextUtf8(GetDlgItem(HWindow, IDC_FIND_LOOKIN), Data.LookInText);
+                    PostMessage(GetDlgItem(HWindow, IDC_FIND_LOOKIN), CB_SETEDITSEL, 0, MAKELPARAM(0, -1));
+                }
+            }
+        }
+
+        if (LOWORD(wParam) == IDC_FIND_NAMED)
+        {
+            int code = HIWORD(wParam);
+            if (code == CBN_SETFOCUS && InitialFocusNamed)
+            {
+                InitialFocusNamed = FALSE;
+                char curText[NAMED_TEXT_LEN];
+                curText[0] = 0;
+                GetControlTextUtf8(GetDlgItem(HWindow, IDC_FIND_NAMED), curText, NAMED_TEXT_LEN);
+                if (Data.NamedText[0] != 0 && strcmp(curText, Data.NamedText) != 0)
+                {
+                    SetControlTextUtf8(GetDlgItem(HWindow, IDC_FIND_NAMED), Data.NamedText);
+                    PostMessage(GetDlgItem(HWindow, IDC_FIND_NAMED), CB_SETEDITSEL, 0, MAKELPARAM(0, -1));
+                }
+            }
+        }
+
         if (FoundFilesListView != NULL && ListView_GetEditControl(FoundFilesListView->HWindow) != NULL)
             return 0; // the list view sends some commands while editing
         if (LOWORD(wParam) >= CM_FIND_OPTIONS_FIRST && LOWORD(wParam) <= CM_FIND_OPTIONS_LAST)

@@ -55,29 +55,31 @@ Tento přístup je okamžitý (0 ms) a 100% spolehlivě detekuje jak výměnu ce
 ## 📋 4. Navazující oprava: Sjednocení synchronizace ComboBoxů a oprava Find Look in (`fix/combobox-sync-and-find-lookin`)
 
 ### 4.1 Kontext a identifikace příčiny
-Po opravě v `fix/archive-cache-and-copy-target-folder` bylo zaznamenáno identické chování v dialogu Hledat (`Alt+F7`) v poli "Look in" (`IDC_FIND_LOOKIN`).
-Vyšetřením zdrojových kódů bylo zjištěno:
-- V původním Open Salamanderu posílala funkce `HistoryComboBox` zprávu `WM_SETTEXT` přímo oknu ComboBoxu (`hwnd`).
-- Při dřívější migrace na UTF-8 zavedená funkce `SetHistoryControlTextUtf8` v `src/viewer.cpp` posílala `SetWindowTextW` **pouze na vnitřní Edit control**, čímž byl buffer ComboBoxu ponechán prázdný a desynchronizovaný.
-- Následný `CB_ADDSTRING` a fokus způsobil, že ComboBox přiřadil editačnímu poli položku z historie, jež začínala předvyplněným textem.
-- Tím byl odhalen skutečný kořenový problém, který dřívější úprava v `dialogs3.cpp` obcházela pomocí `InitialFocus`.
+Po opravě v `fix/archive-cache-and-copy-target-folder` bylo zaznamenáno chování v dialogu Hledat (`Alt+F7`) v poli "Look in" (`IDC_FIND_LOOKIN` / `Hledat v:`), kdy se ihned po otevření dialogu předvyplnil podadresář z historie (např. `C:\Users\filip\AntigravityProjects\salamander-sftp-plugin\test`) namísto aktivní složky z panelu (`C:\Users\filip\AntigravityProjects`).
 
-### 4.2 Provedená vylepšení
+Vyšetřením zdrojových kódů a chování Win32 ComboBoxu byly identifikovány dva související mechanismy:
+1. **Obrácené pořadí plnění v `HistoryComboBox` (`src/viewer.cpp`):**
+   Funkce `HistoryComboBox` dříve volala `SetControlTextUtf8(hwnd, Text)` *před* přidáním položek historie. Následné volání `ComboAddStringUtf8` pro položky z historie mohlo ovlivnit interní výběr ComboBoxu.
+2. **Win32 ComboBox prefix matching při získání fokusu (`CBN_SETFOCUS`):**
+   Pokud je aktuální adresář v editačním poli ComboBoxu (se stylem `CBS_DROPDOWN`) striktním prefixem některé položky z historie (např. `...\AntigravityProjects` vs `...\AntigravityProjects\salamander-sftp-plugin\test`), Windows ComboBox při inicializaci a získání fokusu automaticky vyhledá shodu a nahradí obsah pole touto delší položkou z historie.
+
+### 4.2 Provedená systematická řešení
 1. **Unifikace v `src/gui.h` a `src/gui.cpp`:**
-   - Zavedeny plně otestované sdílené pomocné funkce:
+   - Zavedeny sdílené unifikované funkce pro práci s UTF-8 v ComboBoxech a Edit controlových prvcích:
      - `ResolveComboEditControl(HWND ctrl)`
      - `Utf8ToWideString(const char* text, int count, std::wstring& wide)`
      - `GetControlTextUtf8(HWND ctrl, char* buffer, int bufferSize)`
      - `SetControlTextUtf8(HWND ctrl, const char* text)`
      - `ComboAddStringUtf8(HWND combo, const char* text)`
    - `SetControlTextUtf8` spolehlivě odesílá `WM_SETTEXT` nadřazenému ComboBoxu i synchronizuje text v podřízeném Edit oknu.
-2. **Vyčištění a oprava v `src/viewer.cpp`:**
-   - Odstraněny lokální funkce `ResolveHistoryComboEditControl`, `GetHistoryControlTextUtf8` a vadná `SetHistoryControlTextUtf8`.
-   - `HistoryComboBox` nyní používá sdílené unifikované funkce. Tím je opraveno pole "Look in" ve Find dialogu a všechna ostatní pole s historií.
-3. **Odstranění duplicit z `src/finddlg1.cpp`:**
-   - Odstraněny lokální `ResolveFindComboEditControl` a `GetFindControlTextUtf8`, nahrazeny funkcemi z `gui.h`.
-4. **Refaktoring a odstranění workaroundu z `src/dialogs.h` a `src/dialogs3.cpp`:**
-   - Odstraněn stav `InitialFocus` a obsluha `CBN_SETFOCUS` z `CCopyMoveDialog` i `CCopyMoveMoreDialog`.
-   - Odstraněny lokální duplicity funkcí pro ComboBox.
-5. **Automatizované testování:**
-   - Vytvořen nový test `src/tests/combobox_text_sync_contract_tests.py`, který úspěšně ověřuje platnost kontraktu.
+2. **Oprava pořadí plnění v `src/viewer.cpp` (`HistoryComboBox`):**
+   - V `HistoryComboBox` se nyní nejprve naplní seznam historie (`ComboAddStringUtf8`) a teprve poté se jako poslední nastaví cílový text pomocí `SetControlTextUtf8(hwnd, Text)`. Tím je zaručeno, že explicitní text má vždy přednost.
+3. **Ochrana před nežádoucím přepsáním na `CBN_SETFOCUS`:**
+   - **`CFindDialog` (`src/find.h`, `src/finddlg1.cpp`):**
+     Zavedeny stavy `InitialFocusLookIn` a `InitialFocusNamed`. Při prvním obdržení fokusu (`CBN_SETFOCUS`) ovládacími prvky `IDC_FIND_LOOKIN` a `IDC_FIND_NAMED` dialog detekuje případné nežádoucí přepsání textu a obnoví původní text (`Data.LookInText` / `Data.NamedText`).
+   - **`CCopyMoveDialog` a `CCopyMoveMoreDialog` (`src/dialogs.h`, `src/dialogs3.cpp`):**
+     Obnoven a zachován stav `InitialFocus` na zprávu `CBN_SETFOCUS` pro `IDE_PATH`, který chrání cílovou cestu kopírování/přesunu před přepsáním podadresářem z historie.
+4. **Automatizované testování:**
+   - Test `src/tests/combobox_text_sync_contract_tests.py` ověřuje existenci a použití unifikovaných funkcí i přítomnost ochrany `InitialFocus` v hlavičkách i implementacích dialogů.
+5. **Nasazení (Deployment):**
+   - Pro správnou funkci je nutné vždy společně nasadit jak `salamand.exe`, tak `lang\english.slg` do cílového adresáře (např. `C:\Apps\samandarin\`).

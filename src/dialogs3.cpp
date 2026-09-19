@@ -773,6 +773,7 @@ CCopyMoveDialog::CCopyMoveDialog(HWND parent, char* path, int pathBufSize, char*
     SetHelpID(helpID); // the dialog serves multiple purposes - set the proper helpID
     SelectionEnd = -1; // -1 = select all
     SelectionEndChars = -1;
+    InitialFocus = TRUE;
 }
 
 void CCopyMoveDialog::SetSelectionEnd(int selectionEnd)
@@ -904,6 +905,27 @@ CCopyMoveDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         return 0;
     }
 
+    case WM_COMMAND:
+    {
+        if (LOWORD(wParam) == IDE_PATH)
+        {
+            int code = HIWORD(wParam);
+            if (code == CBN_SETFOCUS && InitialFocus)
+            {
+                InitialFocus = FALSE;
+                CPathBuffer curText(SAL_MAX_PATH);
+                curText.Data()[0] = 0;
+                GetControlTextUtf8(GetDlgItem(HWindow, IDE_PATH), curText.Data(), curText.Capacity());
+                if (Path != NULL && Path[0] != 0 && strcmp(curText.Data(), Path) != 0)
+                {
+                    SetControlTextUtf8(GetDlgItem(HWindow, IDE_PATH), Path);
+                    int selEnd = SelectionEndChars >= 0 ? SelectionEndChars : SelectionEnd;
+                    PostMessage(GetDlgItem(HWindow, IDE_PATH), CB_SETEDITSEL, 0, MAKELPARAM(0, selEnd));
+                }
+            }
+        }
+        break;
+    }
 
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORBTN:
@@ -1084,6 +1106,7 @@ CCopyMoveMoreDialog::CCopyMoveMoreDialog(HWND parent, char* path, int pathBufSiz
     TargetPaths = targetPaths;
     AllowChangeTarget = allowChangeTarget;
     MoreButton = NULL;
+    InitialFocus = TRUE;
 }
 
 CCopyMoveMoreDialog::~CCopyMoveMoreDialog()
@@ -1719,6 +1742,23 @@ MENU_TEMPLATE_ITEM CopyMoveMoreDialogMenu[] =
 
     case WM_COMMAND:
     {
+        if (LOWORD(wParam) == IDE_PATH)
+        {
+            int code = HIWORD(wParam);
+            if (code == CBN_SETFOCUS && InitialFocus)
+            {
+                InitialFocus = FALSE;
+                CPathBuffer curText(SAL_MAX_PATH);
+                curText.Data()[0] = 0;
+                GetControlTextUtf8(GetDlgItem(HWindow, IDE_PATH), curText.Data(), curText.Capacity());
+                if (Path != NULL && Path[0] != 0 && strcmp(curText.Data(), Path) != 0)
+                {
+                    SetControlTextUtf8(GetDlgItem(HWindow, IDE_PATH), Path);
+                    PostMessage(GetDlgItem(HWindow, IDE_PATH), CB_SETEDITSEL, 0, MAKELPARAM(0, -1));
+                }
+            }
+        }
+
         if (HIWORD(wParam) == BN_CLICKED)
         {
             switch (LOWORD(wParam))

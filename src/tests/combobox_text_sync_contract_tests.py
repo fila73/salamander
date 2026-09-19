@@ -8,6 +8,7 @@ SRC = ROOT / "src"
 GUI_H = SRC / "gui.h"
 GUI_CPP = SRC / "gui.cpp"
 VIEWER_CPP = SRC / "viewer.cpp"
+FIND_H = SRC / "find.h"
 FINDDLG1_CPP = SRC / "finddlg1.cpp"
 DIALOGS_H = SRC / "dialogs.h"
 DIALOGS3_CPP = SRC / "dialogs3.cpp"
@@ -49,7 +50,8 @@ def test_viewer_history_combo_uses_unified_helpers():
             "HistoryComboBox must use ComboAddStringUtf8 for history item insertion")
 
 
-def test_find_dialog_uses_unified_helpers():
+def test_find_dialog_uses_unified_helpers_and_focus_protection():
+    find_h_text = FIND_H.read_text(encoding="utf-8", errors="replace")
     finddlg_text = FINDDLG1_CPP.read_text(encoding="utf-8", errors="replace")
 
     require("ResolveFindComboEditControl" not in finddlg_text,
@@ -59,22 +61,29 @@ def test_find_dialog_uses_unified_helpers():
     require("GetControlTextUtf8(hLookInWnd, Data.LookInText, LOOKIN_TEXT_LEN);" in finddlg_text,
             "Find LookIn must use GetControlTextUtf8")
 
+    require("BOOL InitialFocusLookIn;" in find_h_text,
+            "CFindDialog must declare InitialFocusLookIn")
+    require("InitialFocusLookIn = TRUE;" in finddlg_text,
+            "CFindDialog must initialize InitialFocusLookIn")
+    require("code == CBN_SETFOCUS && InitialFocusLookIn" in finddlg_text,
+            "CFindDialog must handle CBN_SETFOCUS to prevent prefix matching overwriting LookIn")
 
-def test_dialogs_removed_workaround():
+
+def test_dialogs_focus_protection_present():
     dialogs_h_text = DIALOGS_H.read_text(encoding="utf-8", errors="replace")
     dialogs3_cpp_text = DIALOGS3_CPP.read_text(encoding="utf-8", errors="replace")
 
-    require("BOOL InitialFocus;" not in dialogs_h_text,
-            "InitialFocus workaround must be removed from dialogs.h")
-    require("InitialFocus" not in dialogs3_cpp_text,
-            "InitialFocus workaround must be removed from dialogs3.cpp")
+    require("BOOL InitialFocus;" in dialogs_h_text,
+            "InitialFocus protection must be declared in dialogs.h")
+    require("code == CBN_SETFOCUS && InitialFocus" in dialogs3_cpp_text,
+            "InitialFocus protection must be handled in dialogs3.cpp for IDE_PATH")
 
 
 def main():
     test_gui_combobox_helpers_declared_and_defined()
     test_viewer_history_combo_uses_unified_helpers()
-    test_find_dialog_uses_unified_helpers()
-    test_dialogs_removed_workaround()
+    test_find_dialog_uses_unified_helpers_and_focus_protection()
+    test_dialogs_focus_protection_present()
     print("combobox_text_sync_contract_tests: ok")
 
 
