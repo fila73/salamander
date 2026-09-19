@@ -65,3 +65,14 @@ Tato část shrnuje realizované opravy ve větvi `feature/viewer-search-and-pri
 | **Vyhledávání ve virtuálním textu Prism (#745)** | Prism Text Viewer nevyhledal slova mimo aktuální viewport, protože virtuální scroller (`virtual-viewer.js`) drží v DOMu jen viditelné bloky textu. | • `src/plugins/shared/webviewviewer/native_viewer.cpp`: implementováno celotextové vyhledávání v paměti (`virtualText_`) s O(log N) mapováním na řádky a sloupce pomocí `virtualLineStarts_`.<br>• `src/plugins/shared/webviewviewer/prism/viewer/virtual-viewer.html`: přidán integrovaný Find Bar s tlačítky pro shodu velikosti písmen (Aa), celá slova (\b), přechod na další (▼/Enter/F3), předchozí (▲/Shift+Enter/Shift+F3) a zavření (✕/Esc).<br>• `src/plugins/shared/webviewviewer/prism/viewer/virtual-viewer.js`: navigace k nalezenému řádku, automatická materializace chunku a přesné zvýraznění výskytu pomocí DOM Range & Selection s vystředěním na obrazovce. |
 | **Optimalizace startu (#749)** | Prism Text Viewer a WebView2 startovaly pomalu (~3 sekundy). | • `src/plugins/shared/webviewviewer/native_viewer.cpp`: paralelní spuštění přípravy dokumentu (`StartPreparation`) přímo v `WM_CREATE` souběžně s vytvářením WebView2 controlleru. Po dokončení controlleru je dokument již načten a připraven v paměti.<br>• `src/plugins/shared/webviewviewer/prism/viewer/virtual-viewer.js`: odstraněna zbytečná zpoždění při odesílání `salamander-prism-ready` notifikace po vykreslení prvního chunku. |
 
+---
+
+## 🚀 Nasazení do `C:\Apps\samandarin\` (19.09.2026)
+
+Všechny nově sestavené binárky a aktualizované assety byly nasazeny přímo do pracovní instalace `C:\Apps\samandarin\`:
+1. `salamand.exe` (a `salamand.pdb`) -> `C:\Apps\samandarin\`
+2. `textviewer.spl` -> `C:\Apps\samandarin\plugins\textviewer\`
+3. `webview2renderviewer.spl` -> `C:\Apps\samandarin\plugins\webview2renderviewer\`
+4. `virtual-viewer.html` a `virtual-viewer.js` (Find Bar a full-text navigace) -> `C:\Apps\samandarin\plugins\salamatrix\prism\viewer\`
+
+
