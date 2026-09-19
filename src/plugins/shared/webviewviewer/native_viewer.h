@@ -85,6 +85,8 @@ struct NativeViewerRequest
     CSalamanderGUIAbstract* gui;
     LOGFONT viewerFont;
     CSalamanderGeneralAbstract* general;
+    const wchar_t* searchPhrase;
+    DWORD searchFlags;
 };
 
 bool NativeViewer_EnsureInitialized();

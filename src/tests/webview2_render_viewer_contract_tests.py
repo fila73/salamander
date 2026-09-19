@@ -159,9 +159,11 @@ def main() -> None:
         or 'value == L"salamander-prism-theme-ready"' not in native_viewer
         or "self->ShowPrismBrowser()" not in native_viewer
         or "ApplyControllerZoom()" not in native_viewer
+        or "case WM_SETFOCUS:" not in native_viewer
+        or "FocusBrowser()" not in native_viewer
     ):
         raise AssertionError(
-            "Prism must reveal only its themed page and report Ready after painted content"
+            "Prism must reveal only its themed page, manage focus, and report Ready after painted content"
         )
     if "Prism.highlightElement(code);finish();" in native_viewer:
         raise AssertionError("small Prism files must not highlight on the UI thread via NavigateToString")
@@ -481,6 +483,53 @@ def main() -> None:
         or "GetFileAttributesExW(" not in webview_plugin_source
     ):
         raise AssertionError("file-size checks must remain Unicode and long-path safe")
+
+    spl_gen = (REPOSITORY_ROOT / "src" / "plugins" / "shared" / "spl_gen.h").read_text(encoding="utf-8")
+    if (
+        "SALCFG_VIEWERFINDTEXT" not in spl_gen
+        or "SALCFG_VIEWERFINDCASE" not in spl_gen
+        or "SALCFG_VIEWERFINDWHOLEWORDS" not in spl_gen
+        or "SearchPhrase" not in spl_gen
+        or "SearchFlags" not in spl_gen
+    ):
+        raise AssertionError("spl_gen.h must define viewer find configuration parameters and selection fields")
+
+    plugins1 = (REPOSITORY_ROOT / "src" / "plugins1.cpp").read_text(encoding="utf-8")
+    if (
+        "GlobalFindDialog.Text" not in plugins1
+        or "selectionData.SearchPhrase" not in plugins1
+    ):
+        raise AssertionError("plugins1.cpp must propagate find search phrase to viewer plugins")
+
+    zip_cpp = (REPOSITORY_ROOT / "src" / "zip.cpp").read_text(encoding="utf-8")
+    if "case SALCFG_VIEWERFINDTEXT:" not in zip_cpp:
+        raise AssertionError("zip.cpp must handle SALCFG_VIEWERFINDTEXT in GetConfigParameter")
+
+    if (
+        "viewer-find-bar" not in virtual_html
+        or "find-input" not in virtual_html
+        or "find-count" not in virtual_html
+        or "find-prev" not in virtual_html
+        or "find-next" not in virtual_html
+    ):
+        raise AssertionError("virtual-viewer.html must provide an integrated find bar")
+
+    if (
+        "salamander-find:" not in virtual_viewer
+        or "handleFindResult" not in virtual_viewer
+        or "navigateToMatch" not in virtual_viewer
+        or "highlightMatchInChunk" not in virtual_viewer
+        or "pendingMatch" not in virtual_viewer
+    ):
+        raise AssertionError("virtual-viewer.js must implement full-text search navigation and match highlighting")
+
+    if (
+        "ExecuteSearch" not in native_viewer
+        or "NavigateSearchMatch" not in native_viewer
+        or "salamander-find:" not in native_viewer
+        or "pendingPreparationResult_" not in native_viewer
+    ):
+        raise AssertionError("native_viewer.cpp must support full-text search and parallel preparation")
 
     print("WebView2 render viewer source-contract tests passed.")
 
