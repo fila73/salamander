@@ -1384,6 +1384,12 @@ public:
         UpdateWindow(window_);
     }
 
+    void FocusBrowser()
+    {
+        if (controller_ != nullptr && browserVisible_)
+            controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+    }
+
 private:
     struct SyntaxMenuItem
     {
@@ -1735,12 +1741,6 @@ private:
         if (status_ == nullptr || loadProgress_ >= 100)
             return;
         SetWindowTextW(status_, (parameters_->loading + L" " + std::to_wstring(loadProgress_) + L" %").c_str());
-    }
-
-    void FocusBrowser()
-    {
-        if (controller_ != nullptr && browserVisible_)
-            controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
     }
 
     void CompletePrismDisplay()
