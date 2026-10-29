@@ -21,6 +21,7 @@ Projekt navazuje na původní [Open Salamander](https://github.com/OpenSalamande
 - **Per-Monitor V2 DPI Awareness:** Ostré vykreslování písma, dialogů a ikon na různých monitorech a měřítkách bez nutnosti restartu.
 - **Stromové zobrazení (Tree View):** Dokovatelný i plovoucí synchronizovaný strom složek.
 - **Sloupce Průzkumníka:** Rozšířené vlastnosti, řazení a editace tagů přímo v panelu.
+- **Spolehlivá historie a doplňování:** Přesná obousměrná synchronizace ComboBoxů v dialozích Hledat (Look in), Kopírovat a Přesunout zabraňuje nežádoucímu přepisování zadaných cest z historie.
 
 ### Prohlížeče a rozšíření
 - **Interní prohlížeč (F3):** Rychlé prohlížení textových a binárních souborů, Unicode podpora, zobrazení čísel řádků a režim sledování logů (Log View Mode).

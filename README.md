@@ -20,6 +20,7 @@ It evolves the [original project](https://github.com/OpenSalamander/salamander) 
 - Explorer properties can be selected by category, reordered, persisted, searched, edited where supported, and used for panel sorting; tags are searchable and editable.
 - Explorer-compatible file icons and ICO thumbnails, rich item tooltips, additional user folders, and configurable Windows Terminal or command-shell profiles.
 - Sortable Find, Registry Search, and Batch Renamer result lists.
+- Reliable ComboBox history and autocompletion: Bidirectional UTF-8 synchronization prevents unwanted history overwrite in Find (Look in) and Copy/Move dialogs.
 
 ### Viewers and extensions
 - Internal Viewer with Unicode, status and selection information, zoom, line numbers, and live Log View Mode.

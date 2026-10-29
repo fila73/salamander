@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 // CommentsTranslationProject: TRANSLATED
 
@@ -7,6 +7,7 @@
 #include "cfgdlg.h"
 #include "find.h"
 #include "md5.h"
+#include "gui.h"
 #include "common/widepath.h"
 
 char* FindNamedHistory[FIND_NAMED_HISTORY_SIZE];

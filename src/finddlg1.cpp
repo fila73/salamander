@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 // CommentsTranslationProject: TRANSLATED
 
@@ -29,45 +29,6 @@ const char* NORMAL_FINDING_CAPTION = "%s [%s %s]";
 BOOL FindManageInUse = FALSE;
 BOOL FindIgnoreInUse = FALSE;
 
-static HWND ResolveFindComboEditControl(HWND ctrl)
-{
-    HWND child = GetWindow(ctrl, GW_CHILD);
-    while (child != NULL)
-    {
-        char className[16];
-        if (GetClassName(child, className, (int)ARRAYSIZE(className)) > 0 &&
-            _stricmp(className, "Edit") == 0)
-            return child;
-        child = GetWindow(child, GW_HWNDNEXT);
-    }
-    return ctrl;
-}
-
-static void GetFindControlTextUtf8(HWND ctrl, char* buffer, int bufferSize)
-{
-    if (buffer == NULL || bufferSize <= 0)
-        return;
-    buffer[0] = 0;
-    HWND source = ResolveFindComboEditControl(ctrl);
-    if (GetACP() != CP_UTF8 && !IsWindowUnicode(source))
-    {
-        SendMessage(ctrl, WM_GETTEXT, bufferSize, (LPARAM)buffer);
-        return;
-    }
-
-    int length = GetWindowTextLengthW(source);
-    if (length < 0)
-        length = 0;
-    std::vector<WCHAR> wide(length + 1);
-    int copied = GetWindowTextW(source, wide.data(), length + 1);
-    if (copied < 0)
-        copied = 0;
-    wide[copied] = 0;
-    int written = WideCharToMultiByte(CP_UTF8, 0, wide.data(), copied, buffer, bufferSize - 1, NULL, NULL);
-    if (written < 0)
-        written = 0;
-    buffer[written] = 0;
-}
 
 namespace
 {
@@ -1805,6 +1766,9 @@ CFindDialog::CFindDialog(HWND hCenterAgainst, const char* initPath)
             break;
         }
 
+    InitialFocusLookIn = TRUE;
+    InitialFocusNamed = TRUE;
+
     // data for controls
     if (Data.NamedText[0] == 0)
         lstrcpy(Data.NamedText, "*.*");
@@ -2126,7 +2090,7 @@ void CFindDialog::Validate(CTransferInfo& ti)
         strcpy(bufNamed, Data.NamedText);
         strcpy(bufLookIn, Data.LookInText);
 
-        GetFindControlTextUtf8(hNamesWnd, Data.NamedText, NAMED_TEXT_LEN);
+        GetControlTextUtf8(hNamesWnd, Data.NamedText, NAMED_TEXT_LEN);
         CMaskGroup mask(Data.NamedText);
         int errorPos;
         if (!mask.PrepareMasks(errorPos))
@@ -2135,7 +2099,7 @@ void CFindDialog::Validate(CTransferInfo& ti)
                           MB_OK | MB_ICONEXCLAMATION);
             SetFocus(hNamesWnd); // ensure the CB_SETEDITSEL message works correctly
             int selStart = errorPos;
-            HWND nameEdit = ResolveFindComboEditControl(hNamesWnd);
+            HWND nameEdit = ResolveComboEditControl(hNamesWnd);
             if (IsWindowUnicode(nameEdit) && errorPos > 0)
             {
                 int wideLen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
@@ -2149,7 +2113,7 @@ void CFindDialog::Validate(CTransferInfo& ti)
 
         if (ti.IsGood())
         {
-            GetFindControlTextUtf8(hLookInWnd, Data.LookInText, LOOKIN_TEXT_LEN);
+            GetControlTextUtf8(hLookInWnd, Data.LookInText, LOOKIN_TEXT_LEN);
 
             BuildSerchForData();
             if (SearchForData.Count == 0)
@@ -3389,17 +3353,17 @@ CFindDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         // Windows emoji picker that turns surrogate pairs into '?' and with CJK
         // text it makes repeated search cycles progressively lossy.
         HWND hNamed = GetDlgItem(HWindow, IDC_FIND_NAMED);
-        HWND hNamedEdit = ResolveFindComboEditControl(hNamed);
+        HWND hNamedEdit = ResolveComboEditControl(hNamed);
         if (!IsWindowUnicode(hNamed) && !IsWindowUnicode(hNamedEdit))
             InstallWordBreakProc(hNamed);
 
         HWND hLookIn = GetDlgItem(HWindow, IDC_FIND_LOOKIN);
-        HWND hLookInEdit = ResolveFindComboEditControl(hLookIn);
+        HWND hLookInEdit = ResolveComboEditControl(hLookIn);
         if (!IsWindowUnicode(hLookIn) && !IsWindowUnicode(hLookInEdit))
             InstallWordBreakProc(hLookIn);
 
         HWND hContaining = GetDlgItem(HWindow, IDC_FIND_CONTAINING);
-        HWND hContainingEdit = ResolveFindComboEditControl(hContaining);
+        HWND hContainingEdit = ResolveComboEditControl(hContaining);
         if (!IsWindowUnicode(hContaining) && !IsWindowUnicode(hContainingEdit))
             InstallWordBreakProc(hContaining);
 
@@ -3812,6 +3776,40 @@ CFindDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     case WM_COMMAND:
     {
+        if (LOWORD(wParam) == IDC_FIND_LOOKIN)
+        {
+            int code = HIWORD(wParam);
+            if (code == CBN_SETFOCUS && InitialFocusLookIn)
+            {
+                InitialFocusLookIn = FALSE;
+                char curText[LOOKIN_TEXT_LEN];
+                curText[0] = 0;
+                GetControlTextUtf8(GetDlgItem(HWindow, IDC_FIND_LOOKIN), curText, LOOKIN_TEXT_LEN);
+                if (Data.LookInText[0] != 0 && strcmp(curText, Data.LookInText) != 0)
+                {
+                    SetControlTextUtf8(GetDlgItem(HWindow, IDC_FIND_LOOKIN), Data.LookInText);
+                    PostMessage(GetDlgItem(HWindow, IDC_FIND_LOOKIN), CB_SETEDITSEL, 0, MAKELPARAM(0, -1));
+                }
+            }
+        }
+
+        if (LOWORD(wParam) == IDC_FIND_NAMED)
+        {
+            int code = HIWORD(wParam);
+            if (code == CBN_SETFOCUS && InitialFocusNamed)
+            {
+                InitialFocusNamed = FALSE;
+                char curText[NAMED_TEXT_LEN];
+                curText[0] = 0;
+                GetControlTextUtf8(GetDlgItem(HWindow, IDC_FIND_NAMED), curText, NAMED_TEXT_LEN);
+                if (Data.NamedText[0] != 0 && strcmp(curText, Data.NamedText) != 0)
+                {
+                    SetControlTextUtf8(GetDlgItem(HWindow, IDC_FIND_NAMED), Data.NamedText);
+                    PostMessage(GetDlgItem(HWindow, IDC_FIND_NAMED), CB_SETEDITSEL, 0, MAKELPARAM(0, -1));
+                }
+            }
+        }
+
         if (FoundFilesListView != NULL && ListView_GetEditControl(FoundFilesListView->HWindow) != NULL)
             return 0; // the list view sends some commands while editing
         if (LOWORD(wParam) >= CM_FIND_OPTIONS_FIRST && LOWORD(wParam) <= CM_FIND_OPTIONS_LAST)

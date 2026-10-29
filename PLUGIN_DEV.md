@@ -77,6 +77,8 @@ Při kopírování z disku do pluginu:
   FONT 8, "MS Shell Dlg"
   ```
 * **Podpora Dark Mode:** Každý nový dialog, okno nebo ovládací prvek musí podporovat Dark Mode (`USE_DARKMODELIB=1`).
+* **ComboBox a UTF-8 text:** Při práci s editačními poli `ComboBox` (`CBS_DROPDOWN`) v UTF-8 prostředí posílejte `WM_SETTEXT` jak na vnitřní `Edit` control, tak na hlavní okno `ComboBox` (nebo použijte `SetControlTextUtf8`), aby nedocházelo k desynchronizaci interního bufferu a nechtěnému přepisu textu položkou z historie.
+
 
 ---
 

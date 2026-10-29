@@ -30,3 +30,7 @@ Tento dokument shromažďuje náměty na další vylepšení a optimalizace jád
 - **Popis**: Rozšíření vyhledávání v Prism Text Vieweru o regulární výrazy (Regex) a vizuální značky (markery) nalezených shod přímo na svislém posuvníku (scrollbar markery).
 - **Přínos**: Rychlá vizuální orientace ve velkých zdrojových kódech a log souborech při ladění.
 
+
+### 6. Moderní inline autocomplete v ComboBoxech s historií
+- **Popis**: Možnost volitelného moderního inline našeptávání s vizuálním odlišením doporučeného textu (šedý ghost text).
+- **Přínos**: Pohodlnější zadávání často používaných cest bez nutnosti otevírat rozbalovací seznam.
