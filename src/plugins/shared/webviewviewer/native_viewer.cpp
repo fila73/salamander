@@ -1541,6 +1541,12 @@ private:
         browserVisible_ = false;
         preparationGeneration_ = gNextPreparationGeneration.fetch_add(1);
         preparationInFlight_ = false;
+        pendingPreparationResult_.reset();
+        // Search state belongs to the closed document; F3 after reopen must
+        // not jump using the old offsets.
+        std::wstring().swap(currentSearchQuery_);
+        std::vector<size_t>().swap(currentMatchOffsets_);
+        currentMatchIndex_ = 0;
         virtualGeneration_ = 0;
         virtualInitSent_ = false;
         std::wstring().swap(virtualText_);

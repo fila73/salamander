@@ -384,6 +384,17 @@
     readySent = false;
     selectionActive = false;
     pendingPalette = null;
+    // Find state belongs to the previous document; a reused viewer must not
+    // show its query, count or a queued highlight for the new one.
+    hideFindBar();
+    pendingMatch = null;
+    if (findInput) {
+      findInput.value = "";
+      findInput.classList.remove("no-results");
+    }
+    if (findCount) {
+      findCount.textContent = "";
+    }
     requestSequence += 1;
     window.clearTimeout(handshakeTimer);
     window.clearTimeout(readyFallbackTimer);
@@ -472,11 +483,11 @@
       if (findInput) {
         findInput.value = settings.searchPhrase;
       }
-      if (findCase && settings.searchCaseSensitive) {
-        findCase.classList.add("active");
+      if (findCase) {
+        findCase.classList.toggle("active", Boolean(settings.searchCaseSensitive));
       }
-      if (findWord && settings.searchWholeWords) {
-        findWord.classList.add("active");
+      if (findWord) {
+        findWord.classList.toggle("active", Boolean(settings.searchWholeWords));
       }
       showFindBar(false);
       triggerSearch();
