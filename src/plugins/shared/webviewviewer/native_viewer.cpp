@@ -2566,6 +2566,10 @@ private:
         preparationGeneration_ = gNextPreparationGeneration.fetch_add(1);
         preparationInFlight_ = false;
         pendingPreparationResult_.reset();
+        // Match offsets refer to the previous text; the page reset clears its find bar too.
+        currentSearchQuery_.clear();
+        currentMatchOffsets_.clear();
+        currentMatchIndex_ = 0;
         virtualGeneration_ = 0;
         virtualInitSent_ = false;
         if (!markdown && prismPageReady_ && controller_)
