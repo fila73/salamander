@@ -103,6 +103,12 @@ std::mutex gWindowsLock;
 std::vector<HWND> gWindows;
 std::atomic<bool> gShuttingDown(false);
 std::mutex gViewerHostLock;
+// Last text searched in any viewer during this run; Ctrl+F offers it again.
+// Deliberately not persisted, so the first search after start begins empty.
+std::mutex gLastFindLock;
+std::wstring gLastFindQuery;
+bool gLastFindMatchCase = false;
+bool gLastFindWholeWord = false;
 HANDLE gViewerHostThread = nullptr;
 DWORD gViewerHostThreadId = 0;
 HANDLE gViewerHostReady = nullptr;
@@ -2291,8 +2297,8 @@ private:
                         if (virtualKey == 'F')
                         {
                             args->put_Handled(TRUE);
-                            if (self->parameters_->kind == NativeViewerKind::PrismText && self->webView_)
-                                self->webView_->PostWebMessageAsJson(L"{\"type\":\"openFind\"}");
+                            if (self->parameters_->kind == NativeViewerKind::PrismText)
+                                self->PostOpenFind();
                             return S_OK;
                         }
                         else if (virtualKey == '0' || virtualKey == VK_NUMPAD0)
@@ -3016,8 +3022,34 @@ private:
         return false;
     }
 
+    void PostOpenFind()
+    {
+        if (!webView_)
+            return;
+        std::wstring query;
+        bool matchCase = false;
+        bool wholeWord = false;
+        {
+            std::lock_guard<std::mutex> guard(gLastFindLock);
+            query = gLastFindQuery;
+            matchCase = gLastFindMatchCase;
+            wholeWord = gLastFindWholeWord;
+        }
+        std::wstring json = L"{\"type\":\"openFind\",\"query\":" + JsonString(query) +
+                            L",\"matchCase\":" + (matchCase ? L"true" : L"false") +
+                            L",\"wholeWord\":" + (wholeWord ? L"true" : L"false") + L"}";
+        webView_->PostWebMessageAsJson(json.c_str());
+    }
+
     void ExecuteSearch(const std::wstring& query, bool matchCase, bool wholeWord, size_t fromLine)
     {
+        if (!query.empty())
+        {
+            std::lock_guard<std::mutex> guard(gLastFindLock);
+            gLastFindQuery = query;
+            gLastFindMatchCase = matchCase;
+            gLastFindWholeWord = wholeWord;
+        }
         currentSearchQuery_ = query;
         currentSearchMatchCase_ = matchCase;
         currentSearchWholeWord_ = wholeWord;
@@ -3098,6 +3130,12 @@ private:
                 ExecuteSearch(parameters_->searchPhrase,
                               (parameters_->searchFlags & SALVIEWER_SEARCH_CASE_SENSITIVE) != 0,
                               (parameters_->searchFlags & SALVIEWER_SEARCH_WHOLE_WORDS) != 0, 0);
+                return;
+            }
+            if (currentSearchQuery_.empty())
+            {
+                // nothing searched in this viewer yet: F3 asks for the text like Ctrl+F
+                PostOpenFind();
                 return;
             }
             SendFindResult(0, 0, 0);

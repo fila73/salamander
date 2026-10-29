@@ -1203,7 +1203,7 @@
     } else if (message.type === "findResult") {
       handleFindResult(message);
     } else if (message.type === "openFind") {
-      showFindBar(true);
+      openFindBar(message);
     }
   }
 
@@ -1217,6 +1217,25 @@
       findInput.focus();
       findInput.select();
     }
+  }
+
+  // Ctrl+F: a hidden find bar opens with the last text searched in this run
+  // (empty before the first search); an open one just takes focus.
+  function openFindBar(message) {
+    const query = typeof message.query === "string" ? message.query : "";
+    if (isFindBarOpen || !query || !findInput) {
+      showFindBar(true);
+      return;
+    }
+    findInput.value = query;
+    if (findCase) {
+      findCase.classList.toggle("active", Boolean(message.matchCase));
+    }
+    if (findWord) {
+      findWord.classList.toggle("active", Boolean(message.wholeWord));
+    }
+    showFindBar(true);
+    triggerSearch();
   }
 
   function setFindHighlight(range) {
