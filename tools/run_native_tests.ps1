@@ -279,6 +279,30 @@ try {
             )
         },
         @{
+            Name = 'drive_free_space_ui_contract_tests'
+            Arguments = @(
+                '-B',
+                (Join-Path $repositoryRoot `
+                    'src\tests\drive_free_space_ui_contract_tests.py')
+            )
+        },
+        @{
+            Name = 'menu_right_text_tooltip_contract_tests'
+            Arguments = @(
+                '-B',
+                (Join-Path $repositoryRoot `
+                    'src\tests\menu_right_text_tooltip_contract_tests.py')
+            )
+        },
+        @{
+            Name = 'menu_secondary_text_contract_tests'
+            Arguments = @(
+                '-B',
+                (Join-Path $repositoryRoot `
+                    'src\tests\menu_secondary_text_contract_tests.py')
+            )
+        },
+        @{
             Name = 'panel_rendering_contract_tests'
             Arguments = @(
                 '-B',
