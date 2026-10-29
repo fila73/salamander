@@ -12,6 +12,7 @@
 #include <usp10.h>
 
 #include "viewer.h"
+#include "viewerhex.h"
 #include "menu.h"
 #include "common/widepath.h"
 
@@ -400,7 +401,7 @@ void CFindSetDialog::Transfer(CTransferInfo& ti)
             char buf[FIND_TEXT_LEN];
             char hexBuf[FIND_TEXT_LEN];
             int len;
-            if (view->GetFindText(buf, len))
+            if (view->GetFindText(buf, len, HexMode))
             {
                 if (HexMode)
                 {
@@ -409,7 +410,7 @@ void CFindSetDialog::Transfer(CTransferInfo& ti)
                     int i;
                     for (i = 0; i < len; i++)
                     {
-                        sprintf(hexBuf + i * 3, i == len - 1 ? "%02X" : "%02X ", (unsigned)buf[i]);
+                        sprintf(hexBuf + i * 3, i == len - 1 ? "%02X" : "%02X ", (unsigned)(unsigned char)buf[i]);
                     }
                     strcpy(buf, hexBuf);
                 }
@@ -645,7 +646,8 @@ CViewerWindow::CViewerWindow(const char* fileName, CViewType type, const char* c
         else
             FileName = NULL;
     }
-    Buffer = (unsigned char*)malloc(VIEW_BUFFER_SIZE);
+    Buffer = (unsigned char*)malloc(2 * VIEW_BUFFER_SIZE);
+    RawBuffer = Buffer != NULL ? Buffer + VIEW_BUFFER_SIZE : NULL;
     Seek = 0;
     Loaded = 0;
     DefViewMode = Configuration.DefViewMode;
@@ -1684,7 +1686,6 @@ void CViewerWindow::Paint(HDC dc)
         int lines = Height / CharHeight + 1;
         int columns = (Width - GetTextLeft()) / CharWidth;
         char line[2001]; // holds at most 2000 fully visible characters per line plus 1 partially visible character
-        char* s;
         BOOL fatalErr = FALSE;
         if (columns <= 2000) // only when this maximum is not exceeded
         {
@@ -1704,6 +1705,9 @@ void CViewerWindow::Paint(HDC dc)
             {
             case vtHex:
             {
+                wchar_t hexLine[ViewerHexLineCapacity];
+                wchar_t hexGlyphs[256];
+                BuildViewerHexGlyphTable(GetEffectiveConversionCodePage(), hexGlyphs);
                 FirstLineSize = LastLineSize = 16;
                 int hexOffsetMode = GetHexOffsetMode(FileSize, HexOffsetLength);
 
@@ -1748,32 +1752,19 @@ void CViewerWindow::Paint(HDC dc)
                     if (i + 1 != lines)
                         ViewSize += len; // count only fully visible lines
 
-                    s = line;
+                    int lineLen = 0;
                     if (len != 0)
                     {
-                        PrintHexOffset(s, lineOffset, hexOffsetMode); // line offset
-                        s += HexOffsetLength;
-                        *s++ = ':';
-                        *s++ = ' ';
-
-                        int j;
-                        for (j = 0; j < 16; j++)
-                        {
-                            if (j < len)
-                                if ((j % 4) == 3)
-                                    s += sprintf(s, "%02X  ", (unsigned int)Buffer[lineOffset - Seek + j]);
-                                else
-                                    s += sprintf(s, "%02X ", (unsigned int)Buffer[lineOffset - Seek + j]);
-                            else if ((j % 4) == 3)
-                                s += sprintf(s, "    ");
-                            else
-                                s += sprintf(s, "   ");
-                        }
-                        memmove(s, Buffer + (lineOffset - Seek), (int)len);
-                        s += len;
+                        PrintHexOffset(line, lineOffset, hexOffsetMode);
+                        for (int j = 0; j < HexOffsetLength; ++j)
+                            hexLine[lineLen++] = (unsigned char)line[j];
+                        hexLine[lineLen++] = L':';
+                        hexLine[lineLen++] = L' ';
+                        lineLen += FormatViewerHexBytes(RawBuffer + (lineOffset - Seek),
+                                                       Buffer + (lineOffset - Seek), (int)len,
+                                                       hexGlyphs, hexLine + lineLen);
                     }
 
-                    int lineLen = (int)(s - line); // length of the line to print
                     if (OriginX < lineLen)
                     {
                         int u1, u2;
@@ -1805,7 +1796,7 @@ void CViewerWindow::Paint(HDC dc)
                             FillRect(Bitmap.HMemDC, &myLine, BkgndBrush);
                             if (lineLen > OriginX)
                             {
-                                char* text = line + OriginX; // shift the text buffer according to OriginX
+                                const wchar_t* text = hexLine + OriginX; // shift the text buffer according to OriginX
                                 u1 -= (int)OriginX;
                                 if (u1 < 0)
                                     u1 = 0;
@@ -1822,8 +1813,8 @@ void CViewerWindow::Paint(HDC dc)
                                 // u2, lineLen - OriginX norm
                                 if (u2 < lineLen - OriginX)
                                 {
-                                    MyTextOut(Bitmap.HMemDC, u2 * CharWidth, 0, text + u2,
-                                              (int)(lineLen - OriginX - u2));
+                                    DrawViewerHexCells(Bitmap.HMemDC, u2 * CharWidth, 0, text + u2,
+                                              (int)(lineLen - OriginX - u2), CharWidth);
                                 }
                                 // u1, u2 sel
                                 if (u1 < u2)
@@ -1831,7 +1822,7 @@ void CViewerWindow::Paint(HDC dc)
                                     SetBkColor(Bitmap.HMemDC, GetCOLORREF(ViewerColors[VIEWER_BK_SELECTED]));
                                     SetTextColor(Bitmap.HMemDC, GetCOLORREF(ViewerColors[VIEWER_FG_SELECTED]));
                                     SetBkMode(Bitmap.HMemDC, OPAQUE);
-                                    MyTextOut(Bitmap.HMemDC, u1 * CharWidth, 0, text + u1, u2 - u1);
+                                    DrawViewerHexCells(Bitmap.HMemDC, u1 * CharWidth, 0, text + u1, u2 - u1, CharWidth);
                                     SetBkMode(Bitmap.HMemDC, TRANSPARENT);
                                     SetTextColor(Bitmap.HMemDC, GetCOLORREF(ViewerColors[VIEWER_FG_NORMAL]));
                                     SetBkColor(Bitmap.HMemDC, GetCOLORREF(ViewerColors[VIEWER_BK_NORMAL]));
@@ -1839,7 +1830,7 @@ void CViewerWindow::Paint(HDC dc)
                                 // t2, u1 norm
                                 if (t2 < u1)
                                 {
-                                    MyTextOut(Bitmap.HMemDC, t2 * CharWidth, 0, text + t2, u1 - t2);
+                                    DrawViewerHexCells(Bitmap.HMemDC, t2 * CharWidth, 0, text + t2, u1 - t2, CharWidth);
                                 }
                                 // t1, t2 select
                                 if (t1 < t2)
@@ -1847,14 +1838,14 @@ void CViewerWindow::Paint(HDC dc)
                                     SetBkColor(Bitmap.HMemDC, GetCOLORREF(ViewerColors[VIEWER_BK_SELECTED]));
                                     SetTextColor(Bitmap.HMemDC, GetCOLORREF(ViewerColors[VIEWER_FG_SELECTED]));
                                     SetBkMode(Bitmap.HMemDC, OPAQUE);
-                                    MyTextOut(Bitmap.HMemDC, t1 * CharWidth, 0, text + t1, t2 - t1);
+                                    DrawViewerHexCells(Bitmap.HMemDC, t1 * CharWidth, 0, text + t1, t2 - t1, CharWidth);
                                     SetBkMode(Bitmap.HMemDC, TRANSPARENT);
                                     SetTextColor(Bitmap.HMemDC, GetCOLORREF(ViewerColors[VIEWER_FG_NORMAL]));
                                     SetBkColor(Bitmap.HMemDC, GetCOLORREF(ViewerColors[VIEWER_BK_NORMAL]));
                                 }
                                 // 0, t1 norm
                                 if (t1 > 0)
-                                    MyTextOut(Bitmap.HMemDC, 0, 0, text, t1);
+                                    DrawViewerHexCells(Bitmap.HMemDC, 0, 0, text, t1, CharWidth);
                             }
 
                             // bitblt the entire row to the screen
