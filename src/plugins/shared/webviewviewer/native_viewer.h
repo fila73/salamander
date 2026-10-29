@@ -89,6 +89,8 @@ struct NativeViewerRequest
     DWORD searchFlags;
 };
 
+// Disabled by default. Safe before initialization; never starts the viewer host.
+void NativeViewer_SetPrismKeepReady(bool enabled);
 bool NativeViewer_EnsureInitialized();
 bool NativeViewer_Show(const NativeViewerRequest& request);
 bool NativeViewer_RequestShutdown(bool forceClose);
