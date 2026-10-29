@@ -214,6 +214,14 @@ try {
             )
         },
         @{
+            Name = 'quick_search_unicode_contract_tests'
+            Arguments = @(
+                '-B',
+                (Join-Path $repositoryRoot `
+                    'src\tests\quick_search_unicode_contract_tests.py')
+            )
+        },
+        @{
             Name = 'salamatrix_regression_tests'
             Arguments = @(
                 '-B',
