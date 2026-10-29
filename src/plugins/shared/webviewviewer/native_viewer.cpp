@@ -1339,7 +1339,8 @@ public:
         {
             SetWindowLongPtrW(window, GWLP_USERDATA, 0);
             self->ClosePreparationTarget();
-            delete self;
+            if (self->creationComplete_)
+                delete self;
         }
         return result;
     }
@@ -1370,6 +1371,8 @@ public:
                                   WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                                   parameters_->placement.left, parameters_->placement.top, width, height,
                                   nullptr, nullptr, parameters_->module, this);
+        if (window_ != nullptr)
+            creationComplete_ = true;
         return window_ != nullptr;
     }
 
@@ -1574,7 +1577,9 @@ private:
     bool CreateCustomMenuBar()
     {
         if (parameters_->gui == nullptr)
-            return false;
+            // The Node viewer request does not provide the optional GUI bridge.
+            // The viewer can still render documents without its native menu bar.
+            return true;
         mainMenu_ = parameters_->gui->CreateMenuPopup();
         CGUIMenuPopupAbstract* file = parameters_->gui->CreateMenuPopup();
         CGUIMenuPopupAbstract* view = parameters_->gui->CreateMenuPopup();
@@ -3229,6 +3234,7 @@ private:
 
     std::unique_ptr<ViewerParameters> parameters_;
     HWND window_ = nullptr;
+    bool creationComplete_ = false;
     HFONT menuFont_ = nullptr;
     HWND status_ = nullptr;
     HWND zoomReset_ = nullptr;
