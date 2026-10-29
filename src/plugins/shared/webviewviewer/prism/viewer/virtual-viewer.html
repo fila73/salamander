@@ -134,7 +134,8 @@
       white-space: pre;
     }
 
-    ::selection {
+    ::selection,
+    ::highlight(viewer-find-match) {
       color: var(--viewer-selected-foreground);
       background: var(--viewer-selected-background);
     }
@@ -437,7 +438,7 @@
   <script src="../plugins/autoloader/prism-autoloader.min.js"></script>
   <script src="../plugins/show-invisibles/prism-show-invisibles.min.js"></script>
   <script src="prism-patches.js?v=vs-tokens-18"></script>
-  <script src="virtual-viewer.js?v=prism-reuse-find-1" defer></script>
+  <script src="virtual-viewer.js?v=prism-find-focus-1" defer></script>
 </head>
 <body>
   <div id="viewer-status" class="visually-hidden" role="status" aria-live="polite"></div>

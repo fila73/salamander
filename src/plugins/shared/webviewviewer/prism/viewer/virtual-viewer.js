@@ -38,6 +38,9 @@
   const findClose = document.getElementById("find-close");
   let isFindBarOpen = false;
   let pendingMatch = null;
+  const FIND_HIGHLIGHT_NAME = "viewer-find-match";
+  let findHighlightRange = null;
+  let findHighlightMatch = null;
   let worker = null;
   const workerRequests = new Set();
   const chunksByStart = new Map();
@@ -386,6 +389,7 @@
     pendingPalette = null;
     // Find state belongs to the previous document; a reused viewer must not
     // show its query, count or a queued highlight for the new one.
+    clearFindHighlight();
     hideFindBar();
     pendingMatch = null;
     if (findInput) {
@@ -824,6 +828,11 @@
       if (pendingMatch && (pendingMatch.state === state || (state.startLine <= pendingMatch.line && pendingMatch.line < state.startLine + state.lineCount))) {
         highlightMatchInChunk(state, pendingMatch.line, pendingMatch.col, pendingMatch.length);
         pendingMatch = null;
+      } else if (findHighlightMatch && !findHighlightRange.startContainer.isConnected &&
+          findBar.contains(document.activeElement) &&
+          state.startLine <= findHighlightMatch.line && findHighlightMatch.line < state.startLine + state.lineCount) {
+        // Repainting the chunk detached the highlighted text nodes.
+        highlightMatchInChunk(state, findHighlightMatch.line, findHighlightMatch.col, findHighlightMatch.length, true);
       }
     });
   }
@@ -1210,13 +1219,38 @@
     }
   }
 
+  function setFindHighlight(range) {
+    if (typeof CSS === "undefined" || !CSS.highlights || typeof Highlight === "undefined") {
+      return false;
+    }
+    CSS.highlights.set(FIND_HIGHLIGHT_NAME, new Highlight(range));
+    return true;
+  }
+
+  function clearFindHighlight() {
+    findHighlightRange = null;
+    findHighlightMatch = null;
+    if (typeof CSS !== "undefined" && CSS.highlights) {
+      CSS.highlights.delete(FIND_HIGHLIGHT_NAME);
+    }
+  }
+
   function hideFindBar() {
     if (!findBar) {
       return;
     }
+    // Leaving the find bar turns the highlighted match into a real selection
+    // so it can be copied, as it would be without the find bar.
+    const range = findHighlightRange;
+    clearFindHighlight();
     findBar.classList.add("hidden");
     isFindBarOpen = false;
     window.focus();
+    if (range && spacer.contains(range.startContainer)) {
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
   }
 
   function getFirstVisibleLine() {
@@ -1293,7 +1327,7 @@
     }
   }
 
-  function highlightMatchInChunk(state, line, col, length) {
+  function highlightMatchInChunk(state, line, col, length, keepScroll) {
     const pre = state.slot.querySelector("pre");
     if (!pre) {
       return;
@@ -1354,10 +1388,18 @@
         const range = document.createRange();
         range.setStart(startNode, startOffset);
         range.setEnd(endNode, endOffset);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-        if (startNode.parentElement && startNode.parentElement.scrollIntoView) {
+        // A document selection would pull focus out of the find input, so
+        // while the user types there the match is only highlighted.
+        if (findBar && findBar.contains(document.activeElement) && setFindHighlight(range)) {
+          findHighlightRange = range;
+          findHighlightMatch = { line: line, col: col, length: length };
+        } else {
+          clearFindHighlight();
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        if (!keepScroll && startNode.parentElement && startNode.parentElement.scrollIntoView) {
           startNode.parentElement.scrollIntoView({ block: "center", inline: "nearest" });
         }
       } catch (e) {
