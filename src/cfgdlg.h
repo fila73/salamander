@@ -16,7 +16,7 @@ enum CWorkDirsHistoryScope
 
 enum CCopyMoveTransferPreference
 {
-    CMTP_SEQUENTIAL = 0, // User-controlled; retain the persisted value.
+    CMTP_SEQUENTIAL = 0, // Sequential (one file at a time); retain the persisted value.
     CMTP_STORAGE_AWARE = 1,
     CMTP_KEEP_LAST = 2,
 };
