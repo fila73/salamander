@@ -29,7 +29,14 @@ class Element {
     this.dataset = {};
     this.attributes = {};
     this.style = { setProperty() {} };
-    this.classList = { add() {}, toggle() {} };
+    const classes = new Set();
+    this.classList = {
+      add(name) { classes.add(name); },
+      remove(name) { classes.delete(name); },
+      toggle(name, force) { if (force === undefined ? !classes.has(name) : force) classes.add(name); else classes.delete(name); },
+      contains(name) { return classes.has(name); }
+    };
+    this.value = "";
     this.innerHTML = this.textContent = "";
     this.clientWidth = 800;
   }
@@ -56,6 +63,9 @@ class Element {
   }
   querySelectorAll() { return []; }
   getBoundingClientRect() { return { top: 0, bottom: 32, height: 32 }; }
+  addEventListener() {}
+  focus() {}
+  select() {}
   contains(node) { return node === this || this.children.some(child => child.contains(node)); }
   text() { return this.innerHTML + this.textContent + this.children.map(child => child.text()).join(""); }
 }
@@ -65,6 +75,9 @@ function frontend() {
   let receive;
   const timers = new Map(), frames = new Map(), messages = [], workers = [], observers = [], loads = [];
   const body = new Element("body"), spacer = new Element("main"), status = new Element("div");
+  const named = new Map();  // find bar controls and any other id the page looks up
+  const findBar = new Element("div");
+  named.set("viewer-find-bar", findBar);
   body.appendChild(spacer); body.appendChild(status);
   const selection = { rangeCount: 0, isCollapsed: true, removeAllRanges() { this.rangeCount = 0; this.isCollapsed = true; } };
   const context = {
@@ -72,7 +85,12 @@ function frontend() {
     document: {
       readyState: "complete", baseURI: "https://prism.example/viewer/virtual-viewer.html",
       body, documentElement: { style: { setProperty() {} }, clientHeight: 600, scrollTop: 0 },
-      getElementById(name) { return name === "virtual-spacer" ? spacer : status; },
+      getElementById(name) {
+        if (name === "virtual-spacer") return spacer;
+        if (name === "viewer-status") return status;
+        if (!named.has(name)) named.set(name, new Element("div"));
+        return named.get(name);
+      },
       createElement(tag) { return new Element(tag); },
       getSelection() { return selection; }, addEventListener() {}
     },
@@ -81,7 +99,7 @@ function frontend() {
     clearTimeout(key) { timers.delete(key); },
     requestAnimationFrame(fn) { const key = ++id; frames.set(key, fn); return key; },
     cancelAnimationFrame(key) { frames.delete(key); },
-    addEventListener() {}, innerHeight: 600, scrollY: 0,
+    addEventListener() {}, focus() {}, innerHeight: 600, scrollY: 0,
     scrollTo(x, y) { this.scrollY = y; },
     getComputedStyle() { return { color: "rgb(255,255,255)", lineHeight: "16px" }; },
     Prism: {
@@ -118,7 +136,7 @@ function frontend() {
   }
   function ready() { for (let i = 0; i < 5; ++i) frame(); }
   function queued() { return [...Array.from(timers.values(), timer => timer.fn), ...frames.values()]; }
-  return { context, send, init, chunk, frame, ready, queued, timers, frames, messages, workers, observers, loads, spacer, selection };
+  return { context, send, init, chunk, frame, ready, queued, timers, frames, messages, workers, observers, loads, spacer, selection, named };
 }
 
 function testResetAndStaleDelivery() {
@@ -165,6 +183,20 @@ function testResetAndStaleDelivery() {
   f.ready();
   check(f.spacer.children.length === 0 && f.messages.includes("salamander-prism-ready:3"), "empty file also becomes ready without old content");
   check(f.messages.includes("salamander-prism-theme-ready:3"), "theme readiness carries the new generation");
+}
+
+function testFindStateIsClearedOnReset() {
+  const f = frontend();
+  const input = f.named.get("find-input"), count = f.named.get("find-count"), bar = f.named.get("viewer-find-bar");
+  f.init(40, { searchPhrase: "needle", searchCaseSensitive: true });
+  check(input.value === "needle" && !bar.classList.contains("hidden"), "an external search phrase opens the find bar");
+  count.textContent = "1 of 3"; input.classList.add("no-results");
+  f.send({ type: "reset" });
+  check(input.value === "" && count.textContent === "" && !input.classList.contains("no-results"),
+        "reset clears the previous query, match count and no-results state");
+  check(bar.classList.contains("hidden"), "reset hides the find bar for the next document");
+  f.init(41);
+  check(input.value === "" && bar.classList.contains("hidden"), "a reused page without a search phrase starts with a closed, empty find bar");
 }
 
 async function testDelayedFallback() {
@@ -221,6 +253,7 @@ function testBusyWorkerReset() {
 
 async function main() {
   testResetAndStaleDelivery();
+  testFindStateIsClearedOnReset();
   await testDelayedFallback();
   testWhitespaceTransition();
   testBusyWorkerReset();
