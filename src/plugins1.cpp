@@ -3881,7 +3881,9 @@ BOOL CPluginData::ViewFile(const char* name, int left, int top, int width, int h
         selectionData.FileName = name;
         selectionData.SelectionMagic = SALAMANDER_PLUGIN_VIEWER_SELECTION_MAGIC;
         selectionData.ViewerLabel = (viewerLabel != NULL && viewerLabel[0] != 0) ? viewerLabel : NULL;
-        if (GlobalFindDialog.Text[0] != '\0')
+        // the last viewer search text is not a request to search; only a viewer
+        // opened from Find Files gets its "Containing" text
+        if (PassFindTextToPluginViewer && GlobalFindDialog.Text[0] != '\0')
         {
             selectionData.SearchPhrase = GlobalFindDialog.Text;
             selectionData.SearchFlags = (GlobalFindDialog.CaseSensitive ? SALVIEWER_SEARCH_CASE_SENSITIVE : 0) |

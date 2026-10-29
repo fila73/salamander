@@ -574,6 +574,10 @@ def main() -> None:
         or "selectionData.SearchPhrase" not in plugins1
     ):
         raise AssertionError("plugins1.cpp must propagate find search phrase to viewer plugins")
+    if "PassFindTextToPluginViewer && GlobalFindDialog.Text" not in plugins1:
+        raise AssertionError("only a viewer opened from Find Files may get the search phrase")
+    if "SALCFG_VIEWERFINDTEXT" in native_viewer:
+        raise AssertionError("the viewer must not open its find bar with the last viewer search text")
 
     zip_cpp = (REPOSITORY_ROOT / "src" / "zip.cpp").read_text(encoding="utf-8")
     if "case SALCFG_VIEWERFINDTEXT:" not in zip_cpp:

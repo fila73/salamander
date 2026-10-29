@@ -833,6 +833,7 @@ BOOL DragFullWindows = TRUE;
 CWindowQueue ViewerWindowQueue("Internal Viewers");
 
 CFindSetDialog GlobalFindDialog(NULL /* ignored */, 0 /* ignored */, 0 /* ignored */);
+BOOL PassFindTextToPluginViewer = FALSE;
 
 CNames GlobalSelection;
 CDirectorySizesHolder DirectorySizesHolder;
