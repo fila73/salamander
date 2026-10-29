@@ -1540,6 +1540,7 @@ private:
         }
         browserVisible_ = false;
         preparationGeneration_ = gNextPreparationGeneration.fetch_add(1);
+        preparationInFlight_ = false;
         virtualGeneration_ = 0;
         virtualInitSent_ = false;
         std::wstring().swap(virtualText_);
@@ -2164,6 +2165,8 @@ private:
                         self->browserHealthy_ = false;
                         self->prismPageReady_ = false;
                         self->preparationGeneration_ = gNextPreparationGeneration.fetch_add(1);
+                        self->preparationInFlight_ = false;
+                        self->pendingPreparationResult_.reset();
                         self->virtualGeneration_ = 0;
                         self->virtualInitSent_ = false;
                         if (self->idle_)
@@ -2537,6 +2540,7 @@ private:
             std::lock_guard<std::mutex> guard(preparationTarget_->lock);
             preparationTarget_->alive = false;
             preparationGeneration_ = gNextPreparationGeneration.fetch_add(1);
+            preparationInFlight_ = false;
             MSG pending = {};
             while (PeekMessageW(&pending, window_, WM_NV_PREPARATION_COMPLETE,
                                 WM_NV_PREPARATION_COMPLETE, PM_REMOVE))
@@ -2554,6 +2558,8 @@ private:
             return;
         }
         preparationGeneration_ = gNextPreparationGeneration.fetch_add(1);
+        preparationInFlight_ = false;
+        pendingPreparationResult_.reset();
         virtualGeneration_ = 0;
         virtualInitSent_ = false;
         if (!markdown && prismPageReady_ && controller_)
@@ -2587,6 +2593,7 @@ private:
             ShowError(parameters_->openFailed, HRESULT_FROM_WIN32(GetLastError()));
             return;
         }
+        preparationInFlight_ = true;
         CloseHandle(worker);
     }
 
@@ -2630,6 +2637,7 @@ private:
         }
         if (idle_ || result->generation != preparationGeneration_)
             return;
+        preparationInFlight_ = false;
         if (!webView_)
         {
             pendingPreparationResult_ = std::move(result);
@@ -3207,6 +3215,32 @@ private:
         }
     }
 
+    // View -> Refresh must re-read the file even when the previous text is
+    // still loaded, so it cannot go through LoadDocument()'s reuse logic.
+    void RefreshDocument()
+    {
+        if (!webView_)
+            return;
+        if (parameters_->kind == NativeViewerKind::PrismText)
+        {
+            SetLoadProgress(70);
+            StartPreparation(false);
+            return;
+        }
+        if (parameters_->kind == NativeViewerKind::RenderDocument)
+        {
+            const std::wstring extension = ExtensionOf(parameters_->filePath);
+            if (extension == L".md" || extension == L".markdown" || extension == L".mdown" ||
+                extension == L".mkd" || extension == L".mdx")
+            {
+                SetLoadProgress(70);
+                StartPreparation(true);
+                return;
+            }
+        }
+        LoadDocument();
+    }
+
     void LoadDocument()
     {
         if (!webView_)
@@ -3219,7 +3253,13 @@ private:
             {
                 ApplyPreparationResult(std::move(pendingPreparationResult_));
             }
-            else if (virtualGeneration_ == 0)
+            else if (preparationInFlight_)
+            {
+                // WM_CREATE already started the read; HandlePreparationResult
+                // applies it once it arrives.  Do not read the file twice.
+                return;
+            }
+            else
             {
                 StartPreparation(false);
             }
@@ -3259,7 +3299,11 @@ private:
             {
                 ApplyPreparationResult(std::move(pendingPreparationResult_));
             }
-            else if (virtualGeneration_ == 0)
+            else if (preparationInFlight_)
+            {
+                return;
+            }
+            else
             {
                 StartPreparation(true);
             }
@@ -3327,7 +3371,7 @@ private:
         if (command == IDM_NV_CLOSE)
             CloseOrKeepReady();
         else if (command == IDM_NV_REFRESH && webView_)
-            LoadDocument();
+            RefreshDocument();
         else if (command == IDM_NV_ZOOM_IN || command == IDC_NV_ZOOM_IN)
             SetZoom(zoomPercent_ + 10);
         else if (command == IDM_NV_ZOOM_OUT || command == IDC_NV_ZOOM_OUT)
@@ -3537,6 +3581,7 @@ private:
     PreparationTarget* preparationTarget_ = nullptr;
     uint64_t preparationGeneration_ = 0;
     uint64_t virtualGeneration_ = 0;
+    bool preparationInFlight_ = false;
     bool virtualInitSent_ = false;
     std::wstring virtualText_;
     std::vector<size_t> virtualLineStarts_;
