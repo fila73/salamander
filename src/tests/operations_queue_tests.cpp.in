@@ -121,7 +121,8 @@ void TestLegacyCompatibilityAndPausedPredecessor()
 {
     TestQueue queue; auto disk = Disk(1);
     Add(queue, 1, disk); BOOL paused = TRUE;
-    CHECK(queue.AddOperation(2, FALSE, &paused, &disk) && !paused, "legacy BOOL unchecked starts despite disk overlap");
+    CHECK(queue.AddOperation(2, FALSE, &paused, &disk) && paused, "legacy BOOL unchecked is paused by disk overlap");
+    CHECK(queue.GetWaitReason(2) == CSWR_PHYSICAL_DEVICE_CONFLICT, "legacy BOOL unchecked waits with a physical device conflict");
     queue.SetPaused(1, 2);
     CHECK(Add(queue, 3, Disk(3), COSO_WAIT_ALL) == CSWR_EXPLICIT_OR_GLOBAL_WAIT, "checked Legacy waits for unfinished manually paused predecessors");
     queue.Finish(2); CHECK(queue.State(3) == 1, "manually paused predecessor continues to hold explicit wait");
