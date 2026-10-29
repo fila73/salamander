@@ -759,8 +759,6 @@ protected:
 
     BOOL ProcessingEscape; // the message loop is currently handling ESCAPE -- if
                            // IDCANCEL is generated, a confirmation is shown
-    BOOL InitialFocusLookIn;
-    BOOL InitialFocusNamed;
 
     CFindLog Log; // storage for errors and information
 
