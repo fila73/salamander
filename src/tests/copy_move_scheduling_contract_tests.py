@@ -141,8 +141,8 @@ def main() -> None:
     if not (0 <= history_add < file_operations_add < recycle_bin_add):
         raise AssertionError("File Operations page is not between History and Recycle Bin")
     forbid(lang_rc, "IDC_COPYMOVE_PARALLEL_WARNING", "inline parallel-files warning label")
-    require(texts_rc2, 'IDS_COPYMOVE_PREFERRED_SEQUENTIAL, "User-controlled"',
-            "User-controlled name for the legacy transfer choice")
+    require(texts_rc2, 'IDS_COPYMOVE_PREFERRED_SEQUENTIAL, "Sequential (one file at a time)"',
+            "Sequential name for the legacy transfer choice")
     require(dialogs3, "IDC_CM_TRANSFERMODE",
             "per-operation transfer-mode selector")
     require(dialogs3, "OperationSchedulingOverrideInOut",
