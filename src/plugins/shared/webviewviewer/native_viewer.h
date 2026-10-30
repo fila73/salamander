@@ -67,6 +67,15 @@ struct NativeViewerStrings
     const wchar_t* tokenRegex;
     const wchar_t* saveFailed;
     const wchar_t* uiUnavailable;
+    // Optional (nullptr falls back to English): Edit menu and File/Print.
+    const wchar_t* editMenu;
+    const wchar_t* copy;
+    const wchar_t* selectAll;
+    const wchar_t* find;
+    const wchar_t* findNext;
+    const wchar_t* findPrevious;
+    const wchar_t* goToLine;
+    const wchar_t* print;
 };
 
 struct NativeViewerRequest

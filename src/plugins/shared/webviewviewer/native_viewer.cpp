@@ -73,6 +73,13 @@ constexpr int IDM_NV_COLORS_VISUAL_STUDIO = 40009;
 constexpr int IDM_NV_COLORS_PRISM = 40010;
 constexpr int IDM_NV_COLORS_CUSTOM = 40011;
 constexpr int IDM_NV_COLORS_EDIT_CUSTOM = 40012;
+constexpr int IDM_NV_COPY = 40013;
+constexpr int IDM_NV_SELECT_ALL = 40014;
+constexpr int IDM_NV_FIND = 40015;
+constexpr int IDM_NV_FIND_NEXT = 40016;
+constexpr int IDM_NV_FIND_PREVIOUS = 40017;
+constexpr int IDM_NV_GOTO_LINE = 40018;
+constexpr int IDM_NV_PRINT = 40019;
 constexpr DWORD NV_PALETTE_VISUAL_STUDIO = 0;
 constexpr DWORD NV_PALETTE_PRISM = 1;
 constexpr DWORD NV_PALETTE_CUSTOM = 2;
@@ -1058,6 +1065,14 @@ struct ViewerParameters
     std::wstring tokenRegex;
     std::wstring saveFailed;
     std::wstring uiUnavailable;
+    std::wstring editMenu;
+    std::wstring copy;
+    std::wstring selectAll;
+    std::wstring find;
+    std::wstring findNext;
+    std::wstring findPrevious;
+    std::wstring goToLine;
+    std::wstring print;
     LOGFONT viewerFont = {};
     CSalamanderGeneralAbstract* general = nullptr;
     std::wstring searchPhrase;
@@ -1592,15 +1607,40 @@ private:
         }
     }
 
+    static std::wstring MenuText(const std::wstring& text, const wchar_t* fallback)
+    {
+        return text.empty() ? std::wstring(fallback) : text;
+    }
+
     HMENU CreateMenuBar()
     {
         HMENU bar = CreateMenu();
         HMENU file = CreatePopupMenu();
+        AppendMenuW(file, MF_STRING, IDM_NV_PRINT, MenuText(parameters_->print, L"&Print...\tCtrl+P").c_str());
+        AppendMenuW(file, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(file, MF_STRING, IDM_NV_CLOSE, parameters_->close.c_str());
         // Native menu bars do not add enough breathing room for these short
         // captions. Padding also gives the first item a left inset.
         std::wstring fileCaption = L"  " + parameters_->fileMenu + L"  ";
         AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(file), fileCaption.c_str());
+        HMENU edit = CreatePopupMenu();
+        AppendMenuW(edit, MF_STRING, IDM_NV_COPY, MenuText(parameters_->copy, L"&Copy\tCtrl+C").c_str());
+        AppendMenuW(edit, MF_STRING, IDM_NV_SELECT_ALL,
+                    MenuText(parameters_->selectAll, L"Select &All\tCtrl+A").c_str());
+        if (parameters_->kind == NativeViewerKind::PrismText)
+        {
+            AppendMenuW(edit, MF_SEPARATOR, 0, nullptr);
+            AppendMenuW(edit, MF_STRING, IDM_NV_FIND, MenuText(parameters_->find, L"&Find...\tCtrl+F").c_str());
+            AppendMenuW(edit, MF_STRING, IDM_NV_FIND_NEXT,
+                        MenuText(parameters_->findNext, L"Find &Next\tF3").c_str());
+            AppendMenuW(edit, MF_STRING, IDM_NV_FIND_PREVIOUS,
+                        MenuText(parameters_->findPrevious, L"Find &Previous\tShift+F3").c_str());
+            AppendMenuW(edit, MF_SEPARATOR, 0, nullptr);
+            AppendMenuW(edit, MF_STRING, IDM_NV_GOTO_LINE,
+                        MenuText(parameters_->goToLine, L"&Go to Line...\tCtrl+G").c_str());
+        }
+        std::wstring editCaption = L"  " + MenuText(parameters_->editMenu, L"&Edit") + L"  ";
+        AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(edit), editCaption.c_str());
         HMENU view = CreatePopupMenu();
         AppendMenuW(view, MF_STRING, IDM_NV_REFRESH, parameters_->refresh.c_str());
         AppendMenuW(view, MF_SEPARATOR, 0, nullptr);
@@ -1752,9 +1792,24 @@ private:
         mainMenu_ = parameters_->gui->CreateMenuPopup();
         CGUIMenuPopupAbstract* file = parameters_->gui->CreateMenuPopup();
         CGUIMenuPopupAbstract* view = parameters_->gui->CreateMenuPopup();
-        if (mainMenu_ == nullptr || file == nullptr || view == nullptr)
+        CGUIMenuPopupAbstract* edit = parameters_->gui->CreateMenuPopup();
+        if (mainMenu_ == nullptr || file == nullptr || view == nullptr || edit == nullptr)
             return false;
+        AddMenuItem(file, MenuText(parameters_->print, L"&Print...\tCtrl+P"), IDM_NV_PRINT);
+        AddMenuSeparator(file);
         AddMenuItem(file, parameters_->close, IDM_NV_CLOSE);
+        AddMenuItem(edit, MenuText(parameters_->copy, L"&Copy\tCtrl+C"), IDM_NV_COPY);
+        AddMenuItem(edit, MenuText(parameters_->selectAll, L"Select &All\tCtrl+A"), IDM_NV_SELECT_ALL);
+        if (parameters_->kind == NativeViewerKind::PrismText)
+        {
+            AddMenuSeparator(edit);
+            AddMenuItem(edit, MenuText(parameters_->find, L"&Find...\tCtrl+F"), IDM_NV_FIND);
+            AddMenuItem(edit, MenuText(parameters_->findNext, L"Find &Next\tF3"), IDM_NV_FIND_NEXT);
+            AddMenuItem(edit, MenuText(parameters_->findPrevious, L"Find &Previous\tShift+F3"),
+                        IDM_NV_FIND_PREVIOUS);
+            AddMenuSeparator(edit);
+            AddMenuItem(edit, MenuText(parameters_->goToLine, L"&Go to Line...\tCtrl+G"), IDM_NV_GOTO_LINE);
+        }
         AddMenuItem(view, parameters_->refresh, IDM_NV_REFRESH);
         AddMenuSeparator(view);
         AddMenuItem(view, parameters_->zoomIn, IDM_NV_ZOOM_IN);
@@ -1770,6 +1825,7 @@ private:
                 return false;
         }
         if (!AddMenuItem(mainMenu_, parameters_->fileMenu, 0, file) ||
+            !AddMenuItem(mainMenu_, MenuText(parameters_->editMenu, L"&Edit"), 0, edit) ||
             !AddMenuItem(mainMenu_, parameters_->viewMenu, 0, view) ||
             (parameters_->kind == NativeViewerKind::PrismText &&
              (!AddMenuItem(mainMenu_,
@@ -2156,7 +2212,12 @@ private:
         {
             settings->put_IsStatusBarEnabled(FALSE);
             settings->put_AreDefaultContextMenusEnabled(TRUE);
+#ifdef _DEBUG
             settings->put_AreDevToolsEnabled(TRUE);
+#else
+            // DevTools (F12 / context menu Inspect) are a developer aid only.
+            settings->put_AreDevToolsEnabled(FALSE);
+#endif
             settings->put_IsZoomControlEnabled(TRUE);
         }
         const HWND viewerWindow = window_;
@@ -2301,6 +2362,10 @@ private:
                                 self->PostOpenFind();
                             return S_OK;
                         }
+                        else if (virtualKey == 'G' && self->parameters_->kind == NativeViewerKind::PrismText)
+                            command = IDM_NV_GOTO_LINE;
+                        else if (virtualKey == 'P')
+                            command = IDM_NV_PRINT;
                         else if (virtualKey == '0' || virtualKey == VK_NUMPAD0)
                             command = IDM_NV_ZOOM_RESET;
                         else if (virtualKey == VK_OEM_PLUS || virtualKey == VK_ADD)
@@ -2311,21 +2376,7 @@ private:
                     else if (virtualKey == VK_F3)
                     {
                         args->put_Handled(TRUE);
-                        {
-                            bool backward = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-                            if (self->parameters_->kind == NativeViewerKind::PrismText)
-                            {
-                                self->NavigateSearchMatch(!backward);
-                            }
-                            else if (self->parameters_->kind == NativeViewerKind::RenderDocument && self->webView_)
-                            {
-                                std::wstring phrase = self->parameters_->searchPhrase;
-                                std::wstring script = L"window.find(" + (phrase.empty() ? L"''" : JsonString(phrase)) +
-                                    L", " + ((self->parameters_->searchFlags & SALVIEWER_SEARCH_CASE_SENSITIVE) ? L"true" : L"false") +
-                                    L", " + (backward ? L"true" : L"false") + L", true);";
-                                self->webView_->ExecuteScript(script.c_str(), nullptr);
-                            }
-                        }
+                        self->FindNextCommand((GetKeyState(VK_SHIFT) & 0x8000) != 0);
                         return S_OK;
                     }
                     if (command != 0)
@@ -2375,6 +2426,23 @@ private:
                         if (value.compare(0, std::size(chunkPrefix) - 1, chunkPrefix) == 0)
                         {
                             self->HandleVirtualChunk(value);
+                            return S_OK;
+                        }
+                        constexpr wchar_t copyTextPrefix[] = L"salamander-copy-text:";
+                        if (value == L"salamander-copy-all")
+                        {
+                            if (self->parameters_->kind == NativeViewerKind::PrismText && !self->virtualText_.empty())
+                                self->SetClipboardText(self->virtualText_);
+                            return S_OK;
+                        }
+                        if (value.compare(0, std::size(copyTextPrefix) - 1, copyTextPrefix) == 0)
+                        {
+                            const bool accepted = self->awaitingCopyText_;
+                            self->awaitingCopyText_ = false;
+                            // Only honour the reply to our own Copy request: a rendered page
+                            // must not be able to overwrite the clipboard on its own.
+                            if (accepted && value.size() > std::size(copyTextPrefix) - 1)
+                                self->SetClipboardText(value.substr(std::size(copyTextPrefix) - 1));
                             return S_OK;
                         }
                         constexpr wchar_t findPrefix[] = L"salamander-find:";
@@ -3022,6 +3090,119 @@ private:
         return false;
     }
 
+    // F3 / Shift+F3 / Edit > Find Next|Previous.
+    void FindNextCommand(bool backward)
+    {
+        if (parameters_->kind == NativeViewerKind::PrismText)
+        {
+            NavigateSearchMatch(!backward);
+        }
+        else if (parameters_->kind == NativeViewerKind::RenderDocument && webView_)
+        {
+            std::wstring phrase = parameters_->searchPhrase;
+            std::wstring script = L"window.find(" + (phrase.empty() ? L"''" : JsonString(phrase)) +
+                L", " + ((parameters_->searchFlags & SALVIEWER_SEARCH_CASE_SENSITIVE) ? L"true" : L"false") +
+                L", " + (backward ? L"true" : L"false") + L", true);";
+            webView_->ExecuteScript(script.c_str(), nullptr);
+        }
+    }
+
+    // Puts plain text on the clipboard; bare LF becomes CRLF like Windows editors expect.
+    void SetClipboardText(const std::wstring& text)
+    {
+        std::wstring normalized;
+        normalized.reserve(text.size() + text.size() / 32 + 1);
+        for (size_t i = 0; i < text.size(); ++i)
+        {
+            if (text[i] == L'\n' && (i == 0 || text[i - 1] != L'\r'))
+                normalized.push_back(L'\r');
+            normalized.push_back(text[i]);
+        }
+        const size_t bytes = (normalized.size() + 1) * sizeof(wchar_t);
+        HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+        if (memory == nullptr)
+            return;
+        void* target = GlobalLock(memory);
+        if (target == nullptr)
+        {
+            GlobalFree(memory);
+            return;
+        }
+        memcpy(target, normalized.c_str(), bytes);
+        GlobalUnlock(memory);
+        if (!OpenClipboard(window_))
+        {
+            GlobalFree(memory);
+            return;
+        }
+        EmptyClipboard();
+        if (SetClipboardData(CF_UNICODETEXT, memory) == nullptr)
+            GlobalFree(memory);
+        CloseClipboard();
+    }
+
+    // Edit > Copy. Prism text: the page decides between the real selection and
+    // "everything" (after Select All the DOM only holds the mounted chunks).
+    // Rendered documents: the selection text is posted back and copied here.
+    void CopyCommand()
+    {
+        if (!webView_)
+            return;
+        if (parameters_->kind == NativeViewerKind::PrismText)
+            webView_->PostWebMessageAsJson(L"{\"type\":\"copy\"}");
+        else
+        {
+            awaitingCopyText_ = true;
+            webView_->ExecuteScript(
+                L"window.chrome.webview.postMessage('salamander-copy-text:' + String(window.getSelection()));",
+                nullptr);
+        }
+    }
+
+    void SelectAllCommand()
+    {
+        if (!webView_)
+            return;
+        if (controller_)
+            controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+        if (parameters_->kind == NativeViewerKind::PrismText)
+            webView_->PostWebMessageAsJson(L"{\"type\":\"selectAll\"}");
+        else
+            webView_->ExecuteScript(L"document.execCommand('selectAll');", nullptr);
+    }
+
+    void GoToLineCommand()
+    {
+        if (!webView_ || parameters_->kind != NativeViewerKind::PrismText)
+            return;
+        std::wstring label = parameters_->goToLine;
+        const size_t tab = label.find(L'\t');
+        if (tab != std::wstring::npos)
+            label.resize(tab);
+        label.erase(std::remove(label.begin(), label.end(), L'&'), label.end());
+        while (!label.empty() && (label.back() == L'.' || label.back() == L' ' || label.back() == 0x2026))
+            label.pop_back();
+        if (label.empty())
+            label = L"Go to line";
+        const size_t total = virtualLineStarts_.empty() ? 1 : virtualLineStarts_.size();
+        std::wstring json = L"{\"type\":\"openGoto\",\"label\":" + JsonString(label) +
+                            L",\"total\":" + std::to_wstring(total) + L"}";
+        webView_->PostWebMessageAsJson(json.c_str());
+    }
+
+    void PrintCommand()
+    {
+        if (!webView_)
+            return;
+        ComPtr<ICoreWebView2_16> webView16;
+        if (SUCCEEDED(webView_->QueryInterface(IID_PPV_ARGS(&webView16))) && webView16)
+        {
+            if (SUCCEEDED(webView16->ShowPrintUI(COREWEBVIEW2_PRINT_DIALOG_KIND_BROWSER)))
+                return;
+        }
+        webView_->ExecuteScript(L"window.print();", nullptr);
+    }
+
     void PostOpenFind()
     {
         if (!webView_)
@@ -3420,6 +3601,19 @@ private:
             CloseOrKeepReady();
         else if (command == IDM_NV_REFRESH && webView_)
             RefreshDocument();
+        else if (command == IDM_NV_COPY)
+            CopyCommand();
+        else if (command == IDM_NV_SELECT_ALL)
+            SelectAllCommand();
+        else if (command == IDM_NV_PRINT)
+            PrintCommand();
+        else if (parameters_->kind == NativeViewerKind::PrismText && command == IDM_NV_FIND)
+            PostOpenFind();
+        else if (parameters_->kind == NativeViewerKind::PrismText &&
+                 (command == IDM_NV_FIND_NEXT || command == IDM_NV_FIND_PREVIOUS))
+            FindNextCommand(command == IDM_NV_FIND_PREVIOUS);
+        else if (parameters_->kind == NativeViewerKind::PrismText && command == IDM_NV_GOTO_LINE)
+            GoToLineCommand();
         else if (command == IDM_NV_ZOOM_IN || command == IDC_NV_ZOOM_IN)
             SetZoom(zoomPercent_ + 10);
         else if (command == IDM_NV_ZOOM_OUT || command == IDC_NV_ZOOM_OUT)
@@ -3613,6 +3807,7 @@ private:
     bool showLineNumbers_ = false;
     bool wrapLines_ = false;
     bool showWhitespace_ = false;
+    bool awaitingCopyText_ = false;
     DWORD colorPalette_ = NV_PALETTE_VISUAL_STUDIO;
     std::wstring automaticLanguage_;
     std::wstring selectedLanguage_;
@@ -3936,6 +4131,14 @@ bool NativeViewer_Show(const NativeViewerRequest& request)
     data->tokenRegex = CopyString(request.strings.tokenRegex);
     data->saveFailed = CopyString(request.strings.saveFailed);
     data->uiUnavailable = CopyString(request.strings.uiUnavailable);
+    data->editMenu = CopyString(request.strings.editMenu);
+    data->copy = CopyString(request.strings.copy);
+    data->selectAll = CopyString(request.strings.selectAll);
+    data->find = CopyString(request.strings.find);
+    data->findNext = CopyString(request.strings.findNext);
+    data->findPrevious = CopyString(request.strings.findPrevious);
+    data->goToLine = CopyString(request.strings.goToLine);
+    data->print = CopyString(request.strings.print);
     data->general = request.general;
     if (request.searchPhrase != nullptr && request.searchPhrase[0] != L'\0')
     {

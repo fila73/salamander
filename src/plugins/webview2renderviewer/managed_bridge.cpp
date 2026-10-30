@@ -65,7 +65,7 @@ LOGFONT ReadMenuFont()
 
 NativeViewerStrings ReadStrings()
 {
-    return {SalamanderGeneral->LoadStrW(HLanguage, IDS_PLUGINNAME),
+    NativeViewerStrings strings = {SalamanderGeneral->LoadStrW(HLanguage, IDS_PLUGINNAME),
             SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_FILE),
             SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_VIEW),
             SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_CLOSE),
@@ -80,6 +80,11 @@ NativeViewerStrings ReadStrings()
             SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_READY),
             SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_WEBVIEW_FAILED),
             SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_OPEN_FAILED)};
+    strings.editMenu = SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_EDIT);
+    strings.copy = SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_COPY);
+    strings.selectAll = SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_SELECT_ALL);
+    strings.print = SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_PRINT);
+    return strings;
 }
 }
 

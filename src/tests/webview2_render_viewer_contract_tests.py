@@ -609,6 +609,53 @@ def main() -> None:
     ):
         raise AssertionError("native_viewer.cpp must support full-text search and parallel preparation")
 
+    # Edit menu, print, go to line, DevTools policy.
+    for token in (
+        "IDM_NV_COPY",
+        "IDM_NV_SELECT_ALL",
+        "IDM_NV_FIND_NEXT",
+        "IDM_NV_FIND_PREVIOUS",
+        "IDM_NV_GOTO_LINE",
+        "IDM_NV_PRINT",
+        "ICoreWebView2_16",
+        "ShowPrintUI",
+        "salamander-copy-all",
+        "salamander-copy-text:",
+        "openGoto",
+    ):
+        if token not in native_viewer:
+            raise AssertionError(f"native_viewer.cpp must implement the Edit menu command {token}")
+    if "&Edit" not in native_viewer or "Ctrl+G" not in native_viewer or "Ctrl+P" not in native_viewer:
+        raise AssertionError("the Edit/File menus must show their shortcuts")
+    flattened = native_viewer.replace("\r\n", "\n")
+    if "#ifdef _DEBUG\n            settings->put_AreDevToolsEnabled(TRUE);" not in flattened:
+        raise AssertionError("DevTools may only be enabled in Debug builds")
+    if "put_AreDevToolsEnabled(FALSE)" not in native_viewer:
+        raise AssertionError("DevTools must be disabled in Release builds")
+    if "viewer-goto-bar" not in virtual_html or "goto-input" not in virtual_html:
+        raise AssertionError("virtual-viewer.html must provide the go to line bar")
+    if "prism-edit-menu-1" not in virtual_html:
+        raise AssertionError("virtual-viewer.html must bump the script cache-buster for the edit menu")
+    for token in ("openGotoBar", "goToLine", "selectWholeDocument", "copySelection", "salamander-copy-all"):
+        if token not in virtual_viewer:
+            raise AssertionError(f"virtual-viewer.js must implement {token}")
+    for name in ("textviewer", "webview2renderviewer", "salamatrix"):
+        plugin_dir = REPOSITORY_ROOT / "src" / "plugins" / name
+        sources = "".join(
+            path.read_text(encoding="utf-8-sig")
+            for path in plugin_dir.rglob("*")
+            if path.suffix in (".rc2", ".rh", ".rh2", ".cpp") and "vcxproj" not in path.parts
+        )
+        for token in ("IDS_VIEWER_EDIT", "IDS_VIEWER_COPY", "IDS_VIEWER_SELECT_ALL", "IDS_VIEWER_PRINT"):
+            if sources.count(token) < 3:
+                raise AssertionError(f"{name} must define, translate and load {token}")
+    textviewer_rc = (REPOSITORY_ROOT / "src" / "plugins" / "textviewer" / "lang" / "lang.rc2").read_text(
+        encoding="utf-8-sig"
+    )
+    for token in ("IDS_VIEWER_FIND_NEXT", "IDS_VIEWER_FIND_PREVIOUS", "IDS_VIEWER_GOTO_LINE"):
+        if token not in textviewer_rc:
+            raise AssertionError(f"textviewer must carry the Prism-only caption {token}")
+
     print("WebView2 render viewer source-contract tests passed.")
 
 

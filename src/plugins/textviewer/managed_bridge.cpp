@@ -65,7 +65,7 @@ LOGFONT ReadMenuFont()
 
 NativeViewerStrings ReadStrings()
 {
-    return {SalamanderGeneral->LoadStrW(HLanguage, IDS_PLUGINNAME),
+    NativeViewerStrings strings = {SalamanderGeneral->LoadStrW(HLanguage, IDS_PLUGINNAME),
             SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_FILE),
             SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_VIEW),
             SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_CLOSE),
@@ -106,6 +106,15 @@ NativeViewerStrings ReadStrings()
             SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_COLORS_REGEX),
             SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_COLORS_SAVE_FAILED),
             SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_COLORS_UI_UNAVAILABLE)};
+    strings.editMenu = SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_EDIT);
+    strings.copy = SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_COPY);
+    strings.selectAll = SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_SELECT_ALL);
+    strings.find = SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_FIND);
+    strings.findNext = SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_FIND_NEXT);
+    strings.findPrevious = SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_FIND_PREVIOUS);
+    strings.goToLine = SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_GOTO_LINE);
+    strings.print = SalamanderGeneral->LoadStrW(HLanguage, IDS_VIEWER_PRINT);
+    return strings;
 }
 
 LOGFONT ReadViewerFont()
