@@ -2349,9 +2349,13 @@ private:
                     int command = 0;
                     if (virtualKey == VK_ESCAPE)
                     {
-                        // Prism pages own Esc: it closes the find/go-to bar first and only
-                        // then asks the host to close (salamander-close).
-                        if (self->parameters_->kind != NativeViewerKind::PrismText)
+                        // A loaded Prism page owns Esc: it closes the find/go-to bar first and only
+                        // then asks the host to close (salamander-close). Without a live page script
+                        // (loading, error page, crashed renderer) the host closes, as before.
+                        const bool pageOwnsEsc = self->parameters_->kind == NativeViewerKind::PrismText &&
+                                                 self->prismPageReady_ && self->browserHealthy_ &&
+                                                 self->browserVisible_;
+                        if (!pageOwnsEsc)
                         {
                             args->put_Handled(TRUE);
                             PostMessageW(viewerWindow, WM_CLOSE, 0, 0);
@@ -2446,7 +2450,6 @@ private:
                         }
                         if (value == L"salamander-copy-all")
                         {
-                            const bool accepted = self->awaitingCopyText_;
                             self->awaitingCopyText_ = false;
                             // Ctrl+C in the page also sends this without a menu request.
                             if (self->parameters_->kind == NativeViewerKind::PrismText && !self->virtualText_.empty())

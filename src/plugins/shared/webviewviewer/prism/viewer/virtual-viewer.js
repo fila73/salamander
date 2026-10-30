@@ -1286,10 +1286,8 @@
       postHost("salamander-copy-all");
       return;
     }
-    const text = String(window.getSelection());
-    if (text) {
-      postHost("salamander-copy-text:" + text);
-    }
+    // Always reply, even with nothing selected, so the host disarms its copy request.
+    postHost("salamander-copy-text:" + String(window.getSelection()));
   }
 
   function openGotoBar(message) {
@@ -1733,8 +1731,8 @@
     } else if (event.key === "Escape" && isFindBarOpen) {
       event.preventDefault();
       hideFindBar();
-    } else if (event.key === "Escape") {
-      // No bar open: the host does not intercept Esc for this viewer, so ask it to close.
+    } else if (event.key === "Escape" && !event.repeat) {
+      // No bar open (and not a held key that just closed a bar): the host does not intercept Esc for this viewer, so ask it to close.
       postHost("salamander-close");
     }
   });

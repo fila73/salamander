@@ -634,7 +634,7 @@ def main() -> None:
         raise AssertionError("DevTools must be disabled in Release builds")
     if "viewer-goto-bar" not in virtual_html or "goto-input" not in virtual_html:
         raise AssertionError("virtual-viewer.html must provide the go to line bar")
-    if "prism-edit-menu-4" not in virtual_html:
+    if "prism-edit-menu-5" not in virtual_html:
         raise AssertionError("virtual-viewer.html must bump the script cache-buster for the edit menu")
     copy_command = flattened[flattened.index("void CopyCommand()"):flattened.index("void SelectAllCommand()")]
     if copy_command.count("awaitingCopyText_ = true;") < 2:
