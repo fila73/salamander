@@ -315,7 +315,7 @@ def main() -> None:
             "Prism removes its document padding to match Internal Viewer spacing")
     require(native_viewer, "gutterWidth",
             "Prism sizes its gutter from the document line-number digit count")
-    require(virtual_html, "::selection {",
+    require(virtual_html, "::selection,",
             "Prism uses the Internal Viewer selection colors")
     require(native_viewer, "parameters_->viewerFont.lfWeight",
             "Prism preserves the configured Internal Viewer font weight")
