@@ -41,6 +41,12 @@
   const FIND_HIGHLIGHT_NAME = "viewer-find-match";
   let findHighlightRange = null;
   let findHighlightMatch = null;
+  // Document selection made by find navigation (not by the user); it must not
+  // block repainting its chunk with highlighted HTML.
+  let findSelectionRange = null;
+  let findSelectionMatch = null;
+  // Match kept centered while chunk heights settle, until the user scrolls.
+  let matchAnchor = null;
   let worker = null;
   const workerRequests = new Set();
   const chunksByStart = new Map();
@@ -392,6 +398,9 @@
     clearFindHighlight();
     hideFindBar();
     pendingMatch = null;
+    findSelectionRange = null;
+    findSelectionMatch = null;
+    matchAnchor = null;
     if (findInput) {
       findInput.value = "";
       findInput.classList.remove("no-results");
@@ -775,7 +784,7 @@
     const epoch = documentEpoch;
     highlightedHtml = normalizeInvisibleLineEndings(highlightedHtml);
     state.cachedHtml = highlightedHtml;
-    if (state.mounted && selectionActive && selectionTouchesSlot(state.slot)) {
+    if (state.mounted && selectionActive && selectionTouchesSlot(state.slot) && !selectionIsFindMatch()) {
       state.deferredHtml = highlightedHtml;
       return;
     }
@@ -833,8 +842,29 @@
           state.startLine <= findHighlightMatch.line && findHighlightMatch.line < state.startLine + state.lineCount) {
         // Repainting the chunk detached the highlighted text nodes.
         highlightMatchInChunk(state, findHighlightMatch.line, findHighlightMatch.col, findHighlightMatch.length, true);
+      } else if (findSelectionMatch && findSelectionRange && !findSelectionRange.startContainer.isConnected &&
+          state.startLine <= findSelectionMatch.line && findSelectionMatch.line < state.startLine + state.lineCount) {
+        // The highlighted repaint replaced the text nodes of the selected match.
+        highlightMatchInChunk(state, findSelectionMatch.line, findSelectionMatch.col, findSelectionMatch.length, true);
+      }
+      if (matchAnchor && state.startLine <= matchAnchor.line) {
+        // A chunk at or above the match changed height after measurement.
+        centerMatchAnchor();
       }
     });
+  }
+
+  function selectionIsFindMatch() {
+    const selection = document.getSelection();
+    if (!findSelectionRange || !selection || selection.rangeCount === 0) {
+      return false;
+    }
+    const range = selection.getRangeAt(0);
+    return range === findSelectionRange || (
+      range.startContainer === findSelectionRange.startContainer &&
+      range.startOffset === findSelectionRange.startOffset &&
+      range.endContainer === findSelectionRange.endContainer &&
+      range.endOffset === findSelectionRange.endOffset);
   }
 
   function viewportBand() {
@@ -1336,6 +1366,7 @@
       targetY = line * (settings ? settings.lineHeight : 16);
     }
 
+    matchAnchor = { line: line, col: col, length: length };
     window.scrollTo({ top: Math.max(0, targetY - 120), behavior: "auto" });
     syncVisibleChunks();
 
@@ -1417,15 +1448,66 @@
           const sel = window.getSelection();
           sel.removeAllRanges();
           sel.addRange(range);
+          findSelectionRange = range;
+          findSelectionMatch = { line: line, col: col, length: length };
         }
-        if (!keepScroll && startNode.parentElement && startNode.parentElement.scrollIntoView) {
-          startNode.parentElement.scrollIntoView({ block: "center", inline: "nearest" });
+        if (!keepScroll) {
+          centerRange(range, state, line);
         }
       } catch (e) {
         // selection range fallback
       }
     }
   }
+
+  // Center the match itself. Scrolling its parent element into view centered
+  // the whole <code> block of an unhighlighted chunk, far below the match.
+  function centerRange(range, state, line) {
+    const viewHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+    let top = null;
+    let height = 0;
+    const rect = range && range.getBoundingClientRect ? range.getBoundingClientRect() : null;
+    if (rect && (rect.height > 0 || rect.width > 0)) {
+      top = rect.top;
+      height = rect.height;
+    } else if (state && state.slot) {
+      top = state.slot.getBoundingClientRect().top + (line - state.startLine) * settings.lineHeight;
+      height = settings.lineHeight;
+    }
+    if (top === null) {
+      return;
+    }
+    window.scrollTo({ top: Math.max(0, scrollTop + top + height / 2 - viewHeight / 2), behavior: "auto" });
+  }
+
+  function centerMatchAnchor() {
+    if (!matchAnchor || !settings) {
+      return;
+    }
+    let target = null;
+    chunksByStart.forEach(function (state) {
+      if (state.startLine <= matchAnchor.line && matchAnchor.line < state.startLine + state.lineCount) {
+        target = state;
+      }
+    });
+    let range = null;
+    if (findSelectionMatch && findSelectionMatch.line === matchAnchor.line && findSelectionRange &&
+        findSelectionRange.startContainer.isConnected) {
+      range = findSelectionRange;
+    } else if (findHighlightMatch && findHighlightMatch.line === matchAnchor.line && findHighlightRange &&
+        findHighlightRange.startContainer.isConnected) {
+      range = findHighlightRange;
+    }
+    centerRange(range, target, matchAnchor.line);
+  }
+
+  function releaseMatchAnchor() {
+    matchAnchor = null;
+  }
+  ["wheel", "mousedown", "touchstart", "keydown"].forEach(function (type) {
+    window.addEventListener(type, releaseMatchAnchor, { passive: true, capture: true });
+  });
 
   if (findInput) {
     findInput.addEventListener("input", function () {
