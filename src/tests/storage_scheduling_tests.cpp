@@ -277,7 +277,7 @@ void TestSchedulingModes()
     Check(CopyMoveShouldStartPaused(CMS_SEQUENTIAL, 0, 1, &cand, &run, 1) == 0,
           "Sequential unchecked starts alongside an independent operation");
     Check(CopyMoveShouldStartPaused(CMS_SEQUENTIAL, 0, 0, &cand, NULL, 0) == 0,
-          "User-controlled may start when the operation queue is idle");
+          "Sequential may start when the operation queue is idle");
     Check(CopyMoveShouldStartPaused(CMS_MANUAL, 0, 1, &cand, &run, 1) == 0,
           "an unresolved preference uses automatic scheduling for independent operations");
     Check(CopyMoveShouldStartPaused(CMS_MANUAL, 1, 1, &cand, &run, 1) == 0,
@@ -294,7 +294,7 @@ void TestSchedulingModes()
     Check(CopyMoveShouldStartPaused(CMS_SEQUENTIAL, 0, 1, &sameView, &run, 1) != 0,
           "Sequential unchecked must queue a second operation on the same HDD");
     Check(CopyMoveShouldStartPaused(CMS_SEQUENTIAL, 1, 1, &cand, &run, 1) != 0,
-          "User-controlled checked must wait even for an independent earlier operation");
+          "Sequential checked must wait even for an independent earlier operation");
 }
 
 int WaitReason(int policy, int operationOverride, int anyOtherActive, int hasBarrier,
@@ -359,15 +359,15 @@ void TestTransferModeAdmissionContract()
     Check(sequentialUnchecked == COSO_DEFAULT, "Sequential unchecked uses storage-conflict admission, not start-now");
     Check(WaitReason(COSP_STORAGE_AWARE, sequentialUnchecked, 1, 0, overlap, &hdd, 1) == CSWR_PHYSICAL_DEVICE_CONFLICT,
           "Sequential unchecked never runs two operations on the same physical disk");
-    Check(waitAll == COSO_WAIT_ALL, "User-controlled checked means explicit wait-all");
+    Check(waitAll == COSO_WAIT_ALL, "Sequential checked means explicit wait-all");
     Check(WaitReason(COSP_STORAGE_AWARE, immediate, 1, 1, overlap, &hdd, 1) == CSWR_NONE,
           "explicit start-now API bypasses physical conflicts and queued waiters");
     Check(WaitReason(COSP_STORAGE_AWARE, immediate, 1, 0, unknown, &hdd, 1) == CSWR_NONE,
           "explicit start-now API bypasses unknown-storage fallback");
     Check(WaitReason(COSP_STORAGE_AWARE, waitAll, 1, 0, independent, &hdd, 1) == CSWR_EXPLICIT_OR_GLOBAL_WAIT,
-          "User-controlled wait includes earlier independent operations");
+          "Sequential wait includes earlier independent operations");
     Check(WaitReason(COSP_STORAGE_AWARE, waitAll, 0, 0, independent) == CSWR_NONE,
-          "User-controlled wait is satisfied when no predecessor remains");
+          "Sequential wait is satisfied when no predecessor remains");
 
     COperationStorageUse nvme = UseFrom(LocalMedia(10, SMEDIA_NVME, SACCESS_WRITE));
     COperationStorageUse writers[2] = {nvme, nvme};

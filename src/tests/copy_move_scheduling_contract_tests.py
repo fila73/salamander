@@ -45,7 +45,7 @@ def main() -> None:
     texts_rc2 = (src / "lang/texts.rc2").read_text(encoding="utf-8")
 
     require(sched_h, "CMS_STORAGE_AWARE", "parallel file-transfer mode")
-    require(sched_h, "CMS_SEQUENTIAL", "User-controlled transfer mode compatibility value")
+    require(sched_h, "CMS_SEQUENTIAL", "Sequential transfer mode compatibility value")
     require(sched_h, "COSP_STORAGE_AWARE", "storage-aware operation policy")
     require(sched_h, "COSP_GLOBAL_SEQUENTIAL", "legacy global sequential API value")
     require(sched_h, "COSP_ASK", "legacy ask API value")
@@ -157,9 +157,9 @@ def main() -> None:
     transfer_controls = function_slice(
         dialogs3, "void CCopyMoveMoreDialog::UpdateTransferModeControls()", "\n}\n")
     require(transfer_controls, "OperationSchedulingOverrideInOut != NULL && userControlled",
-            "wait checkbox enabled only in User-controlled mode")
+            "wait checkbox enabled only in Sequential mode")
     require(transfer_controls, "!userControlled || LegacyWait ? BST_CHECKED : BST_UNCHECKED",
-            "Storage-aware checked indicator and restored User-controlled choice")
+            "Storage-aware checked indicator and restored Sequential choice")
     require(dialogs3, "LOWORD(wParam) == IDC_CM_TRANSFERMODE && HIWORD(wParam) == CBN_SELCHANGE",
             "transfer selector updates wait controls immediately")
     require(dialogs3, "IsWindowEnabled(GetDlgItem(HWindow, IDC_CM_STARTONIDLE))",
