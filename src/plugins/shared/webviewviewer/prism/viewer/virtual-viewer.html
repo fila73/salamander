@@ -376,7 +376,8 @@
       display: none;
     }
 
-    #find-input {
+    #find-input,
+    #goto-input {
       width: 170px;
       height: 22px;
       padding: 1px 5px;
@@ -389,7 +390,12 @@
       outline: none;
     }
 
-    #find-input:focus {
+    .goto-bar {
+      top: 44px;
+    }
+
+    #find-input:focus,
+    #goto-input:focus {
       border-color: var(--viewer-selected-background);
     }
 
@@ -438,7 +444,7 @@
   <script src="../plugins/autoloader/prism-autoloader.min.js"></script>
   <script src="../plugins/show-invisibles/prism-show-invisibles.min.js"></script>
   <script src="prism-patches.js?v=vs-tokens-18"></script>
-  <script src="virtual-viewer.js?v=prism-find-last-1" defer></script>
+  <script src="virtual-viewer.js?v=prism-edit-menu-1" defer></script>
 </head>
 <body>
   <div id="viewer-status" class="visually-hidden" role="status" aria-live="polite"></div>
@@ -450,6 +456,10 @@
     <button type="button" id="find-prev" class="find-btn" title="Previous Match (Shift+F3)">▲</button>
     <button type="button" id="find-next" class="find-btn" title="Next Match (F3 or Enter)">▼</button>
     <button type="button" id="find-close" class="find-btn" title="Close (Escape)">✕</button>
+  </div>
+  <div id="viewer-goto-bar" class="find-bar goto-bar hidden" role="dialog">
+    <input type="text" id="goto-input" inputmode="numeric" spellcheck="false" autocomplete="off" />
+    <button type="button" id="goto-close" class="find-btn" title="Close (Escape)">&#x2715;</button>
   </div>
   <main id="virtual-spacer" role="document" aria-busy="true"></main>
 </body>

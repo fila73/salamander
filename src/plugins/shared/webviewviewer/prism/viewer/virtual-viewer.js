@@ -36,7 +36,15 @@
   const findPrev = document.getElementById("find-prev");
   const findNext = document.getElementById("find-next");
   const findClose = document.getElementById("find-close");
+  const gotoBar = document.getElementById("viewer-goto-bar");
+  const gotoInput = document.getElementById("goto-input");
+  const gotoClose = document.getElementById("goto-close");
   let isFindBarOpen = false;
+  let isGotoBarOpen = false;
+  let gotoTotal = 1;
+  // After Edit > Select All the DOM only holds the mounted chunks, so Copy
+  // asks the host for the whole document while this flag is set.
+  let selectAllActive = false;
   let pendingMatch = null;
   const FIND_HIGHLIGHT_NAME = "viewer-find-match";
   let findHighlightRange = null;
@@ -1035,6 +1043,12 @@
   }
 
   function onSelectionChange() {
+    if (selectAllActive) {
+      const current = window.getSelection();
+      if (!current || current.isCollapsed) {
+        selectAllActive = false;
+      }
+    }
     const wasActive = selectionActive;
     selectionActive = selectionTouchesViewer();
     if (wasActive && !selectionActive) {
@@ -1204,7 +1218,75 @@
       handleFindResult(message);
     } else if (message.type === "openFind") {
       openFindBar(message);
+    } else if (message.type === "openGoto") {
+      openGotoBar(message);
+    } else if (message.type === "selectAll") {
+      selectWholeDocument();
+    } else if (message.type === "copy") {
+      copySelection();
     }
+  }
+
+  function selectWholeDocument() {
+    if (!spacer) {
+      return;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(spacer);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    selectAllActive = true;
+  }
+
+  // Edit > Copy. The host owns the clipboard: it has the full text, and
+  // execCommand("copy") would need a user gesture the menu click does not give the page.
+  function copySelection() {
+    if (selectAllActive) {
+      postHost("salamander-copy-all");
+      return;
+    }
+    const text = String(window.getSelection());
+    if (text) {
+      postHost("salamander-copy-text:" + text);
+    }
+  }
+
+  function openGotoBar(message) {
+    if (!gotoBar || !gotoInput) {
+      return;
+    }
+    const total = Number(message.total);
+    gotoTotal = total >= 1 ? Math.floor(total) : 1;
+    const label = typeof message.label === "string" && message.label ? message.label : "Go to line";
+    gotoInput.placeholder = label + " (1-" + gotoTotal + ")";
+    gotoInput.setAttribute("aria-label", label);
+    gotoInput.value = "";
+    gotoBar.classList.remove("hidden");
+    isGotoBarOpen = true;
+    gotoInput.focus();
+  }
+
+  function hideGotoBar() {
+    if (!gotoBar) {
+      return;
+    }
+    gotoBar.classList.add("hidden");
+    isGotoBarOpen = false;
+    window.focus();
+  }
+
+  // Scrolls to the 1-based line (clamped to the document) and selects it.
+  function goToLine(value) {
+    const requested = parseInt(value, 10);
+    if (!isFinite(requested)) {
+      return false;
+    }
+    const line = Math.min(gotoTotal, Math.max(1, requested)) - 1;
+    clearFindHighlight();
+    selectAllActive = false;
+    navigateToMatch(line, 0, -1);
+    return true;
   }
 
   function showFindBar(focusInput) {
@@ -1374,7 +1456,9 @@
     });
 
     let node;
+    let lastNode = null;
     while ((node = walker.nextNode())) {
+      lastNode = node;
       const text = node.nodeValue;
       for (let i = 0; i < text.length; i += 1) {
         if (curLine === lineInChunk && curCol === col && !startNode) {
@@ -1382,6 +1466,12 @@
           startOffset = i;
         }
         if (curLine === lineInChunk && curCol === col + length && !endNode) {
+          endNode = node;
+          endOffset = i;
+          break;
+        }
+        if (length < 0 && startNode && !endNode && text[i] === "\n") {
+          // length -1 selects up to the end of the line
           endNode = node;
           endOffset = i;
           break;
@@ -1400,8 +1490,14 @@
 
     if (startNode) {
       if (!endNode) {
-        endNode = startNode;
-        endOffset = Math.min(startNode.nodeValue.length, startOffset + length);
+        if (length < 0) {
+          // Whole line requested (go to line) and it is the last one: end at the last text node.
+          endNode = lastNode || startNode;
+          endOffset = endNode.nodeValue.length;
+        } else {
+          endNode = startNode;
+          endOffset = Math.min(startNode.nodeValue.length, startOffset + length);
+        }
       }
       try {
         const range = document.createRange();
@@ -1468,13 +1564,61 @@
       triggerSearch();
     });
   }
+  if (gotoInput) {
+    gotoInput.addEventListener("input", function () {
+      const digits = gotoInput.value.replace(/[^0-9]/g, "");
+      if (digits !== gotoInput.value) {
+        gotoInput.value = digits;
+      }
+    });
+    gotoInput.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (goToLine(gotoInput.value)) {
+          hideGotoBar();
+        }
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        hideGotoBar();
+      }
+    });
+  }
+  if (gotoClose) {
+    gotoClose.addEventListener("click", function () {
+      hideGotoBar();
+    });
+  }
+  document.addEventListener("copy", function (event) {
+    if (selectAllActive && event.clipboardData) {
+      // Ctrl+C or the context menu after Select All: give the host the whole text.
+      event.preventDefault();
+      postHost("salamander-copy-all");
+    }
+  });
+  window.addEventListener("mousedown", function () {
+    selectAllActive = false;
+  }, true);
   window.addEventListener("keydown", function (event) {
+    const inInput = event.target && event.target.tagName === "INPUT";
+    if (event.ctrlKey && !event.altKey && (event.key === "a" || event.key === "A") && !inInput) {
+      event.preventDefault();
+      selectWholeDocument();
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.altKey &&
+        event.key !== "Shift" && event.key !== "Control" && event.key !== "Alt" && !inInput) {
+      selectAllActive = false;
+    }
     if (event.ctrlKey && (event.key === "f" || event.key === "F")) {
       event.preventDefault();
       showFindBar(true);
     } else if (event.key === "F3") {
       event.preventDefault();
       triggerNextMatch(!event.shiftKey);
+    } else if (event.key === "Escape" && isGotoBarOpen) {
+      event.preventDefault();
+      hideGotoBar();
     } else if (event.key === "Escape" && isFindBarOpen) {
       event.preventDefault();
       hideFindBar();

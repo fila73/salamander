@@ -39,6 +39,7 @@ class Element {
     this.value = "";
     this.innerHTML = this.textContent = "";
     this.clientWidth = 800;
+    this.offsetTop = 0;
   }
   get isConnected() { return this.tag === "body" || Boolean(this.parentNode && this.parentNode.isConnected); }
   appendChild(child) { child.parentNode = this; this.children.push(child); return child; }
@@ -63,7 +64,8 @@ class Element {
   }
   querySelectorAll() { return []; }
   getBoundingClientRect() { return { top: 0, bottom: 32, height: 32 }; }
-  addEventListener() {}
+  addEventListener(type, handler) { (this.listeners = this.listeners || {})[type] = [...((this.listeners || {})[type] || []), handler]; }
+  fire(type, event) { ((this.listeners || {})[type] || []).forEach(handler => handler(event)); }
   focus() {}
   select() {}
   contains(node) { return node === this || this.children.some(child => child.contains(node)); }
@@ -79,7 +81,13 @@ function frontend() {
   const findBar = new Element("div");
   named.set("viewer-find-bar", findBar);
   body.appendChild(spacer); body.appendChild(status);
-  const selection = { rangeCount: 0, isCollapsed: true, removeAllRanges() { this.rangeCount = 0; this.isCollapsed = true; } };
+  const selection = {
+    rangeCount: 0, isCollapsed: true, text: "",
+    removeAllRanges() { this.rangeCount = 0; this.isCollapsed = true; },
+    addRange() { this.rangeCount = 1; this.isCollapsed = false; },
+    toString() { return this.text; }
+  };
+  const windowListeners = {}, documentListeners = {};
   const context = {
     console: { log() {}, warn() {}, error() {} }, URL,
     document: {
@@ -92,15 +100,18 @@ function frontend() {
         return named.get(name);
       },
       createElement(tag) { return new Element(tag); },
-      getSelection() { return selection; }, addEventListener() {}
+      createRange() { return { selectNodeContents() {} }; },
+      getSelection() { return selection; },
+      addEventListener(type, handler) { (documentListeners[type] = documentListeners[type] || []).push(handler); }
     },
     chrome: { webview: { postMessage(value) { messages.push(value); }, addEventListener(type, handler) { if (type === "message") receive = handler; } } },
     setTimeout(fn, delay) { const key = ++id; timers.set(key, { fn, delay }); return key; },
     clearTimeout(key) { timers.delete(key); },
     requestAnimationFrame(fn) { const key = ++id; frames.set(key, fn); return key; },
     cancelAnimationFrame(key) { frames.delete(key); },
-    addEventListener() {}, focus() {}, innerHeight: 600, scrollY: 0,
-    scrollTo(x, y) { this.scrollY = y; },
+    addEventListener(type, handler) { (windowListeners[type] = windowListeners[type] || []).push(handler); },
+    focus() {}, innerHeight: 600, scrollY: 0, getSelection() { return selection; },
+    scrollTo(x, y) { this.scrollY = typeof x === "object" ? x.top : y; },
     getComputedStyle() { return { color: "rgb(255,255,255)", lineHeight: "16px" }; },
     Prism: {
       languages: {}, highlight(text) { return `<span class="token">${text}</span>`; },
@@ -136,7 +147,7 @@ function frontend() {
   }
   function ready() { for (let i = 0; i < 5; ++i) frame(); }
   function queued() { return [...Array.from(timers.values(), timer => timer.fn), ...frames.values()]; }
-  return { context, send, init, chunk, frame, ready, queued, timers, frames, messages, workers, observers, loads, spacer, selection, named };
+  return { context, send, init, chunk, frame, ready, queued, timers, frames, messages, workers, observers, loads, spacer, selection, named, windowListeners, documentListeners };
 }
 
 function testResetAndStaleDelivery() {
@@ -199,6 +210,48 @@ function testFindStateIsClearedOnReset() {
   check(input.value === "" && bar.classList.contains("hidden"), "a reused page without a search phrase starts with a closed, empty find bar");
 }
 
+function testGoToLineBar() {
+  const f = frontend();
+  const bar = f.named.get("viewer-goto-bar"), input = f.named.get("goto-input");
+  f.init(50, { lineCount: 500 });
+  f.send({ type: "openGoto", label: "Go to Line", total: 500 });
+  check(!bar.classList.contains("hidden"), "openGoto from the host shows the go to line bar");
+  check(input.placeholder === "Go to Line (1-500)", "the placeholder carries the localized label and the line count");
+  input.value = "1";
+  input.fire("keydown", { key: "Enter", preventDefault() {} });
+  check(bar.classList.contains("hidden") && f.context.scrollY === 0, "Enter on line 1 scrolls to the top and closes the bar");
+  f.send({ type: "openGoto", label: "Go to Line", total: 500 });
+  input.value = "99999";
+  input.fire("keydown", { key: "Enter", preventDefault() {} });
+  check(bar.classList.contains("hidden") && f.context.scrollY > 0, "a line past the end is clamped to the last line and scrolled to");
+  f.send({ type: "openGoto", label: "Go to Line", total: 500 });
+  input.value = "";
+  input.fire("keydown", { key: "Enter", preventDefault() {} });
+  check(!bar.classList.contains("hidden"), "an empty entry keeps the bar open");
+  input.fire("keydown", { key: "Escape", preventDefault() {}, stopPropagation() {} });
+  check(bar.classList.contains("hidden"), "Escape closes the go to line bar");
+}
+
+function testSelectAllAndCopy() {
+  const f = frontend();
+  f.init(60);
+  f.messages.length = 0;
+  f.send({ type: "selectAll" });
+  check(f.selection.rangeCount === 1, "Select All selects the document container");
+  f.send({ type: "copy" });
+  check(f.messages.includes("salamander-copy-all"), "Copy after Select All asks the host for the whole document");
+  f.messages.length = 0;
+  let prevented = false;
+  f.documentListeners.copy.forEach(handler => handler({ clipboardData: {}, preventDefault() { prevented = true; } }));
+  check(prevented && f.messages.includes("salamander-copy-all"), "Ctrl+C after Select All is redirected to the whole-document copy");
+  f.windowListeners.mousedown.forEach(handler => handler({}));
+  f.messages.length = 0;
+  f.selection.text = "picked text";
+  f.send({ type: "copy" });
+  check(f.messages.includes("salamander-copy-text:picked text") && !f.messages.includes("salamander-copy-all"),
+        "after a new selection Copy sends only the selected text");
+}
+
 async function testDelayedFallback() {
   const f = frontend();
   f.init(10, { language: "ruby" }); f.chunk(10, "OLD FALLBACK");
@@ -254,6 +307,8 @@ function testBusyWorkerReset() {
 async function main() {
   testResetAndStaleDelivery();
   testFindStateIsClearedOnReset();
+  testGoToLineBar();
+  testSelectAllAndCopy();
   await testDelayedFallback();
   testWhitespaceTransition();
   testBusyWorkerReset();
