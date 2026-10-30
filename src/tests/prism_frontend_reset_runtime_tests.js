@@ -304,8 +304,60 @@ function testBusyWorkerReset() {
   check(f.workers.length === 2 && !f.workers[1].terminated, "a fully completed worker remains reusable on later opens");
 }
 
+// Opening from Find Files selects the first match while the chunk is still
+// plain text. The worker result must still be painted (it was deferred
+// behind the find selection forever), and the scroll must center the match,
+// not the whole <code> block of the chunk.
+function testInitialSearchMatchKeepsHighlightAndView() {
+  const f = frontend();
+  const ctx = f.context;
+  ctx.NodeFilter = { SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2 };
+  // One text node per <code>, its value is the markup without tags.
+  ctx.document.createTreeWalker = function (code) {
+    const node = { nodeValue: code.innerHTML.replace(/<[^>]*>/g, ""), parentElement: code,
+                   get isConnected() { return code.isConnected; } };
+    let done = false;
+    return { nextNode() { if (done) return null; done = true; return node; } };
+  };
+  const matchTopInViewport = 900;  // the match rect, relative to the viewport
+  ctx.document.createRange = function () {
+    return { setStart(node, offset) { this.startContainer = node; this.startOffset = offset; },
+             setEnd(node, offset) { this.endContainer = node; this.endOffset = offset; },
+             getBoundingClientRect() { return { top: matchTopInViewport, height: 16, width: 48 }; } };
+  };
+  const selection = f.selection;
+  selection.addRange = function (range) { this.range = range; this.rangeCount = 1; this.isCollapsed = false; };
+  selection.getRangeAt = function () { return this.range; };
+  ctx.getSelection = () => selection;
+  let selectionListener = null;
+  ctx.document.addEventListener = function (type, handler) { if (type === "selectionchange") selectionListener = handler; };
+  ctx.scrollTo = function (x, y) { this.scrollY = typeof x === "object" ? x.top : y; };
+  // Re-run so the page picks up the extended document.
+  vm.runInContext(source, ctx, { timeout: 1000 });
+  const text = Array.from({ length: 80 }, (_, i) => (i === 10 ? "let needle = 1;" : `line ${i}`)).join("\n");
+  f.send({ type: "init", generation: 50, lineCount: 80, chunkLines: 80, language: "javascript", searchPhrase: "needle" });
+  f.send({ type: "chunk", generation: 50, startLine: 0, lineCount: 80, text });
+  f.frame();
+  ctx.scrollY = 0;
+  f.send({ type: "findResult", query: "needle", matchIndex: 1, totalCount: 1, line: 10, col: 4, length: 6 });
+  check(selection.rangeCount === 1 && selection.range.startOffset > 0, "the initial match is selected");
+  // navigateToMatch first scrolls to the line estimate (160 - 120), the rect is relative to that.
+  check(ctx.scrollY === 40 + matchTopInViewport + 8 - 300, "the scroll centers the match rectangle itself");
+  selection.range.intersectsNode = () => true;
+  f.spacer.contains = () => true;
+  selectionListener();  // selectionchange: the find selection is now active
+  const worker = f.workers[f.workers.length - 1];
+  const request = worker.requests.find(r => r.generation === 50);
+  worker.deliver(request, text.replace("let ", '<span class="token keyword">let</span> '));
+  check(f.spacer.text().includes('class="token keyword"'), "highlighted HTML is painted despite the find selection");
+  f.frame();
+  check(selection.rangeCount === 1 && selection.range.startContainer.isConnected,
+        "the match is selected again in the highlighted chunk");
+}
+
 async function main() {
   testResetAndStaleDelivery();
+  testInitialSearchMatchKeepsHighlightAndView();
   testFindStateIsClearedOnReset();
   testGoToLineBar();
   testSelectAllAndCopy();
