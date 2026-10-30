@@ -2482,7 +2482,7 @@ private:
                         return S_OK;
                     }).Get(), &webMessageToken_);
         webView_->AddWebResourceRequestedFilter(
-            L"https://markdown.local/*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_DOCUMENT);
+            L"https://markdown.example/*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_DOCUMENT);
         webView_->add_WebResourceRequested(
             Callback<ICoreWebView2WebResourceRequestedEventHandler>(
                 [viewerWindow, viewerGeneration](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT
@@ -2563,10 +2563,10 @@ private:
         if (folder.empty() || FAILED(webView_.As(&webView3)))
             return L"";
         HRESULT hr = webView3->SetVirtualHostNameToFolderMapping(
-            L"document.local", folder.c_str(), COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW);
+            L"document.example", folder.c_str(), COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW);
         if (FAILED(hr))
             return L"";
-        return L"https://document.local/" + UrlEncodePathSegment(FileNameOf(parameters_->filePath));
+        return L"https://document.example/" + UrlEncodePathSegment(FileNameOf(parameters_->filePath));
     }
 
     struct PrismStyleMetrics
@@ -2705,7 +2705,7 @@ private:
     void NavigateMarkdown(const std::wstring& fragment)
     {
         std::wstring mappedUri = MapLocalDocument();
-        std::wstring base = mappedUri.empty() ? L"" : L"https://document.local/";
+        std::wstring base = mappedUri.empty() ? L"" : L"https://document.example/";
         COLORREF codeBackground = BlendColor(parameters_->theme.background, parameters_->theme.foreground,
                                               parameters_->theme.dark ? 10 : 6);
         COLORREF border = BlendColor(parameters_->theme.background, parameters_->theme.foreground,
@@ -2725,7 +2725,7 @@ private:
             CssColor(border) + L";margin:2em 0}ul,ol{margin:0 0 1em 1.5em}</style>"
             L"</head><body>" + fragment + L"</body></html>";
         markdownDocumentUtf8_ = WideToUtf8(html);
-        markdownDocumentUri_ = L"https://markdown.local/document.html?generation=" +
+        markdownDocumentUri_ = L"https://markdown.example/document.html?generation=" +
                                std::to_wstring(preparationGeneration_);
         SetLoadProgress(80);
         webView_->Navigate(markdownDocumentUri_.c_str());

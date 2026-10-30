@@ -262,7 +262,7 @@ def main() -> None:
     )
     if any(token not in native_viewer for token in virtual_contract):
         raise AssertionError("Prism files must use native line indexing and virtualization")
-    if 'L"prism.local"' in native_viewer or "https://prism.local/" in virtual_viewer:
+    if re.search(r'L"(?:https://)?(?:prism|markdown|document)\.local', native_viewer) or "https://prism.local/" in virtual_viewer:
         raise AssertionError("Prism's local asset mapping must avoid the delayed .local hostname")
     if (
         "NV_PRISM_FILE_LIMIT = 16U * 1024U * 1024U" not in native_viewer
@@ -279,7 +279,7 @@ def main() -> None:
         raise AssertionError("rendered Markdown images must load lazily after DOM rendering")
     if (
         'AddWebResourceRequestedFilter(' not in native_viewer
-        or 'L"https://markdown.local/*"' not in native_viewer
+        or 'L"https://markdown.example/*"' not in native_viewer
         or "CreateWebResourceResponse(" not in native_viewer
         or "webView_->Navigate(markdownDocumentUri_.c_str())" not in native_viewer
     ):
