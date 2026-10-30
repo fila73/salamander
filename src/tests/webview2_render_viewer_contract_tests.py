@@ -634,8 +634,20 @@ def main() -> None:
         raise AssertionError("DevTools must be disabled in Release builds")
     if "viewer-goto-bar" not in virtual_html or "goto-input" not in virtual_html:
         raise AssertionError("virtual-viewer.html must provide the go to line bar")
-    if "prism-edit-menu-3" not in virtual_html:
+    if "prism-edit-menu-4" not in virtual_html:
         raise AssertionError("virtual-viewer.html must bump the script cache-buster for the edit menu")
+    copy_command = flattened[flattened.index("void CopyCommand()"):flattened.index("void SelectAllCommand()")]
+    if copy_command.count("awaitingCopyText_ = true;") < 2:
+        raise AssertionError("CopyCommand must arm awaitingCopyText_ for the Prism kind too, or the page reply is dropped")
+    if "salamander-close" not in native_viewer or "salamander-close" not in virtual_viewer:
+        raise AssertionError("Esc must be owned by the Prism page (bars first) and close the host via salamander-close")
+    esc_block = flattened[flattened.index("virtualKey == VK_ESCAPE"):flattened.index("virtualKey == VK_F5")]
+    if "PrismText" not in esc_block:
+        raise AssertionError("the host Esc accelerator must not close a Prism viewer while a find/go-to bar is open")
+    reset_block = virtual_viewer[virtual_viewer.index("documentEpoch += 1;"):virtual_viewer.index("clearFindHighlight();")]
+    for token in ("selectAllActive = false;", "hideGotoBar();", "gotoTotal = 1;"):
+        if token not in reset_block:
+            raise AssertionError(f"the document reset must run {token}")
     for token in ("openGotoBar", "goToLine", "selectWholeDocument", "copySelection", "salamander-copy-all"):
         if token not in virtual_viewer:
             raise AssertionError(f"virtual-viewer.js must implement {token}")

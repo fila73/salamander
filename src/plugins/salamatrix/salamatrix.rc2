@@ -36,4 +36,8 @@ STRINGTABLE
  IDS_VIEWER_COPY,                "&Copy	Ctrl+C"
  IDS_VIEWER_SELECT_ALL,          "Select &All	Ctrl+A"
  IDS_VIEWER_PRINT,               "&Print...	Ctrl+P"
+ IDS_VIEWER_FIND,                "&Find...	Ctrl+F"
+ IDS_VIEWER_FIND_NEXT,           "Find &Next	F3"
+ IDS_VIEWER_FIND_PREVIOUS,       "Find &Previous	Shift+F3"
+ IDS_VIEWER_GOTO_LINE,           "&Go to Line...	Ctrl+G"
 }

@@ -400,6 +400,9 @@
     documentEpoch += 1;
     readySent = false;
     selectionActive = false;
+    selectAllActive = false;
+    hideGotoBar();
+    gotoTotal = 1;
     pendingPalette = null;
     // Find state belongs to the previous document; a reused viewer must not
     // show its query, count or a queued highlight for the new one.
@@ -1636,6 +1639,7 @@
         triggerNextMatch(!event.shiftKey);
       } else if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         hideFindBar();
       }
     });
@@ -1693,6 +1697,10 @@
     });
   }
   document.addEventListener("copy", function (event) {
+    const tag = event.target && event.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") {
+      return;
+    }
     if (selectAllActive && event.clipboardData) {
       // Ctrl+C or the context menu after Select All: give the host the whole text.
       event.preventDefault();
@@ -1725,6 +1733,9 @@
     } else if (event.key === "Escape" && isFindBarOpen) {
       event.preventDefault();
       hideFindBar();
+    } else if (event.key === "Escape") {
+      // No bar open: the host does not intercept Esc for this viewer, so ask it to close.
+      postHost("salamander-close");
     }
   });
 

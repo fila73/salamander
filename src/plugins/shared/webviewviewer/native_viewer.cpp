@@ -1442,6 +1442,7 @@ public:
         gIdlePrismViewer = nullptr;
         gIdlePrismWindow.store(nullptr);
         idle_ = false;
+        awaitingCopyText_ = false;
         // Menus and labels must follow the new request, including font/locale.
         DestroyMenus();
         parameters_.swap(parameters);
@@ -2267,6 +2268,8 @@ private:
                 [viewerWindow, viewerGeneration](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs*) -> HRESULT
                 {
                     ViewerWindow* self = Resolve({viewerWindow, viewerGeneration});
+                    if (self != nullptr)
+                        self->awaitingCopyText_ = false;
                     if (self != nullptr && !self->idle_)
                         self->SetLoadProgress(90);
                     return S_OK;
@@ -2346,8 +2349,13 @@ private:
                     int command = 0;
                     if (virtualKey == VK_ESCAPE)
                     {
-                        args->put_Handled(TRUE);
-                        PostMessageW(viewerWindow, WM_CLOSE, 0, 0);
+                        // Prism pages own Esc: it closes the find/go-to bar first and only
+                        // then asks the host to close (salamander-close).
+                        if (self->parameters_->kind != NativeViewerKind::PrismText)
+                        {
+                            args->put_Handled(TRUE);
+                            PostMessageW(viewerWindow, WM_CLOSE, 0, 0);
+                        }
                     }
                     else if (virtualKey == VK_F5)
                         command = IDM_NV_REFRESH;
@@ -2355,6 +2363,7 @@ private:
                         command = IDM_NV_WRAP_LINES;
                     else if ((GetKeyState(VK_CONTROL) & 0x8000) != 0)
                     {
+                        const bool shiftOrAlt = (GetKeyState(VK_SHIFT) & 0x8000) != 0 || (GetKeyState(VK_MENU) & 0x8000) != 0;
                         if (virtualKey == 'F')
                         {
                             args->put_Handled(TRUE);
@@ -2362,9 +2371,9 @@ private:
                                 self->PostOpenFind();
                             return S_OK;
                         }
-                        else if (virtualKey == 'G' && self->parameters_->kind == NativeViewerKind::PrismText)
+                        else if (virtualKey == 'G' && !shiftOrAlt && self->parameters_->kind == NativeViewerKind::PrismText)
                             command = IDM_NV_GOTO_LINE;
-                        else if (virtualKey == 'P')
+                        else if (virtualKey == 'P' && !shiftOrAlt)
                             command = IDM_NV_PRINT;
                         else if (virtualKey == '0' || virtualKey == VK_NUMPAD0)
                             command = IDM_NV_ZOOM_RESET;
@@ -2429,8 +2438,17 @@ private:
                             return S_OK;
                         }
                         constexpr wchar_t copyTextPrefix[] = L"salamander-copy-text:";
+                        if (value == L"salamander-close")
+                        {
+                            if (self->parameters_->kind == NativeViewerKind::PrismText && !self->idle_)
+                                PostMessageW(viewerWindow, WM_CLOSE, 0, 0);
+                            return S_OK;
+                        }
                         if (value == L"salamander-copy-all")
                         {
+                            const bool accepted = self->awaitingCopyText_;
+                            self->awaitingCopyText_ = false;
+                            // Ctrl+C in the page also sends this without a menu request.
                             if (self->parameters_->kind == NativeViewerKind::PrismText && !self->virtualText_.empty())
                                 self->SetClipboardText(self->virtualText_);
                             return S_OK;
@@ -3135,7 +3153,12 @@ private:
             GlobalFree(memory);
             return;
         }
-        EmptyClipboard();
+        if (!EmptyClipboard())
+        {
+            CloseClipboard();
+            GlobalFree(memory);
+            return;
+        }
         if (SetClipboardData(CF_UNICODETEXT, memory) == nullptr)
             GlobalFree(memory);
         CloseClipboard();
@@ -3149,7 +3172,12 @@ private:
         if (!webView_)
             return;
         if (parameters_->kind == NativeViewerKind::PrismText)
+        {
+            // The page answers with salamander-copy-all or salamander-copy-text:<sel>;
+            // only a reply to this request is accepted by the message handler.
+            awaitingCopyText_ = true;
             webView_->PostWebMessageAsJson(L"{\"type\":\"copy\"}");
+        }
         else
         {
             awaitingCopyText_ = true;

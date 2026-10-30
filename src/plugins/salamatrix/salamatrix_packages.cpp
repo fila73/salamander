@@ -5806,6 +5806,10 @@ BOOL WINAPI PackageManager::HostDispatch(
         strings.copy = owner->General->LoadStrW(DLLInstance, IDS_VIEWER_COPY);
         strings.selectAll = owner->General->LoadStrW(DLLInstance, IDS_VIEWER_SELECT_ALL);
         strings.print = owner->General->LoadStrW(DLLInstance, IDS_VIEWER_PRINT);
+        strings.find = owner->General->LoadStrW(DLLInstance, IDS_VIEWER_FIND);
+        strings.findNext = owner->General->LoadStrW(DLLInstance, IDS_VIEWER_FIND_NEXT);
+        strings.findPrevious = owner->General->LoadStrW(DLLInstance, IDS_VIEWER_FIND_PREVIOUS);
+        strings.goToLine = owner->General->LoadStrW(DLLInstance, IDS_VIEWER_GOTO_LINE);
         NativeViewerRequest request = {DLLInstance, parent, widePath.c_str(), placement, SW_SHOWNORMAL, false, NULL, kind, theme, strings};
         const bool opened = NativeViewer_Show(request);
         return CopyResult(std::string("{\"ok\":true,\"opened\":") + (opened ? "true}" : "false}"),
