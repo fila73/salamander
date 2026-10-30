@@ -465,8 +465,13 @@ CProgressDialog::CProgressDialog(HWND parent, COperations* script, const char* c
         const char* mode = LoadStr(IDS_COPYMOVE_SCHED_TITLE_STORAGEAWARE);
         if (Script->CopyMoveTransferMode == CMS_SEQUENTIAL)
             mode = LoadStr(IDS_COPYMOVE_SCHED_TITLE_SEQUENTIAL);
+        // the window title is narrow (taskbar, caption), so drop the explanatory " (...)" tail of the label
+        std::string shortMode = mode;
+        size_t paren = shortMode.find(" (");
+        if (paren != std::string::npos && paren > 0)
+            shortMode.resize(paren);
         SchedulingTitleSuffix = " - ";
-        SchedulingTitleSuffix += mode;
+        SchedulingTitleSuffix += shortMode;
         SchedulingTitleSuffix += " [";
         SchedulingTitleSuffix += StorageUse_GetEndpointLabel(&Script->StorageUse, SACCESS_READ);
         SchedulingTitleSuffix += " -> ";
