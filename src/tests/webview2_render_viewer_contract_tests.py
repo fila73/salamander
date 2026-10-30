@@ -634,7 +634,7 @@ def main() -> None:
         raise AssertionError("DevTools must be disabled in Release builds")
     if "viewer-goto-bar" not in virtual_html or "goto-input" not in virtual_html:
         raise AssertionError("virtual-viewer.html must provide the go to line bar")
-    if "prism-edit-menu-2" not in virtual_html:
+    if "prism-edit-menu-3" not in virtual_html:
         raise AssertionError("virtual-viewer.html must bump the script cache-buster for the edit menu")
     for token in ("openGotoBar", "goToLine", "selectWholeDocument", "copySelection", "salamander-copy-all"):
         if token not in virtual_viewer:

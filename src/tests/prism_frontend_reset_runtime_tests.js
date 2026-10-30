@@ -355,9 +355,87 @@ function testInitialSearchMatchKeepsHighlightAndView() {
         "the match is selected again in the highlighted chunk");
 }
 
+// Opening from Find Files with the WebView unfocused: the first match must be
+// marked with the custom highlight (a selection alone is not reliably visible
+// without focus) and stay marked after the worker repaint. Real Ranges are
+// live: removing their nodes collapses them to (parent, 0) while the
+// container stays connected, so an isConnected test never re-marked them.
+function testInitialSearchMatchMarkedWithoutFocus() {
+  const f = frontend();
+  const ctx = f.context;
+  ctx.NodeFilter = { SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2 };
+  ctx.document.createTreeWalker = function (code) {
+    const node = { nodeValue: code.innerHTML.replace(/<[^>]*>/g, ""), parentElement: code,
+                   get isConnected() { return code.isConnected; } };
+    let done = false;
+    return { nextNode() { if (done) return null; done = true; return node; } };
+  };
+  const liveRanges = [];
+  ctx.document.createRange = function () {
+    const range = { collapsed: true,
+      setStart(node, offset) { this.startContainer = node; this.startOffset = offset; },
+      setEnd(node, offset) { this.endContainer = node; this.endOffset = offset; this.collapsed = false; },
+      getBoundingClientRect() { return { top: 300, height: 16, width: 48 }; } };
+    liveRanges.push(range);
+    return range;
+  };
+  const highlights = new Map();
+  ctx.CSS = { highlights };
+  ctx.Highlight = class { constructor(range) { this.range = range; } };
+  const selection = f.selection;
+  selection.addRange = function (range) { this.range = range; this.rangeCount = 1; this.isCollapsed = false; };
+  selection.getRangeAt = function () { return this.range; };
+  ctx.getSelection = () => selection;
+  let selectionListener = null;
+  ctx.document.addEventListener = function (type, handler) { if (type === "selectionchange") selectionListener = handler; };
+  vm.runInContext(source, ctx, { timeout: 1000 });
+  const originalReplace = Element.prototype.replaceChildren;
+  Element.prototype.replaceChildren = function (...children) {
+    const removed = this.children.slice();
+    liveRanges.forEach(range => {
+      const owner = range.startContainer && range.startContainer.parentElement;
+      if (owner && removed.some(child => child.contains(owner))) {
+        range.startContainer = range.endContainer = this;
+        range.startOffset = range.endOffset = 0;
+        range.collapsed = true;
+      }
+    });
+    return originalReplace.apply(this, children);
+  };
+  try {
+    const text = Array.from({ length: 80 }, (_, i) => (i === 10 || i === 20 ? "let needle = 1;" : `line ${i}`)).join("\n");
+    const first = text.indexOf("needle"), second = text.indexOf("needle", first + 1);
+    const marked = () => highlights.get("viewer-find-match");
+    f.send({ type: "init", generation: 60, lineCount: 80, chunkLines: 80, language: "javascript", searchPhrase: "needle" });
+    f.send({ type: "chunk", generation: 60, startLine: 0, lineCount: 80, text });
+    f.frame();
+    f.send({ type: "findResult", query: "needle", matchIndex: 1, totalCount: 2, line: 10, col: 4, length: 6 });
+    check(marked() && marked().range.startOffset === first && !marked().range.collapsed,
+          "the first match is highlighted although the find bar has no focus");
+    check(selection.range === marked().range, "the unfocused first match is also selected for copying");
+    selection.range.intersectsNode = () => true;
+    f.spacer.contains = () => true;
+    selectionListener();
+    const worker = f.workers[f.workers.length - 1];
+    const request = worker.requests.find(r => r.generation === 60);
+    worker.deliver(request, text.replace(/let /g, '<span class="token keyword">let</span> '));
+    check(marked().range.collapsed, "the repaint collapsed the live range of the first match");
+    f.frame();
+    check(marked() && !marked().range.collapsed && marked().range.startOffset === first &&
+          marked().range.startContainer.isConnected, "the first match is highlighted again after the worker repaint");
+    check(selection.range === marked().range && !selection.range.collapsed, "the first match is selected again after the repaint");
+    // F3: the host answers with the next match after the current one.
+    f.send({ type: "findResult", query: "needle", matchIndex: 2, totalCount: 2, line: 20, col: 4, length: 6 });
+    check(marked().range.startOffset === second && selection.range === marked().range, "F3 marks the second match");
+  } finally {
+    Element.prototype.replaceChildren = originalReplace;
+  }
+}
+
 async function main() {
   testResetAndStaleDelivery();
   testInitialSearchMatchKeepsHighlightAndView();
+  testInitialSearchMatchMarkedWithoutFocus();
   testFindStateIsClearedOnReset();
   testGoToLineBar();
   testSelectAllAndCopy();

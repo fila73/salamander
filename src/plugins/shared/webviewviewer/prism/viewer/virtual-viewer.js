@@ -814,6 +814,19 @@
       appendLineNumberRows(pre, code, state.lineCount);
     }
 
+    // Replacing the children moves the boundaries of every live Range inside
+    // the old nodes to (slot, 0): the find selection/highlight collapses but
+    // its startContainer stays connected. Decide before the swap whether the
+    // current match lives in this chunk and has to be marked again.
+    const inChunk = function (match) {
+      return Boolean(match) && state.startLine <= match.line && match.line < state.startLine + state.lineCount;
+    };
+    let remark = null;
+    if (inChunk(findHighlightMatch)) {
+      remark = { match: findHighlightMatch, select: selectionIsFindMatch() };
+    } else if (inChunk(findSelectionMatch) && selectionIsFindMatch()) {
+      remark = { match: findSelectionMatch, select: true };
+    }
     state.slot.replaceChildren(pre);
     state.slot.style.height = "auto";
     state.slot.removeAttribute("aria-busy");
@@ -845,15 +858,9 @@
       if (pendingMatch && (pendingMatch.state === state || (state.startLine <= pendingMatch.line && pendingMatch.line < state.startLine + state.lineCount))) {
         highlightMatchInChunk(state, pendingMatch.line, pendingMatch.col, pendingMatch.length);
         pendingMatch = null;
-      } else if (findHighlightMatch && !findHighlightRange.startContainer.isConnected &&
-          findBar.contains(document.activeElement) &&
-          state.startLine <= findHighlightMatch.line && findHighlightMatch.line < state.startLine + state.lineCount) {
-        // Repainting the chunk detached the highlighted text nodes.
-        highlightMatchInChunk(state, findHighlightMatch.line, findHighlightMatch.col, findHighlightMatch.length, true);
-      } else if (findSelectionMatch && findSelectionRange && !findSelectionRange.startContainer.isConnected &&
-          state.startLine <= findSelectionMatch.line && findSelectionMatch.line < state.startLine + state.lineCount) {
-        // The highlighted repaint replaced the text nodes of the selected match.
-        highlightMatchInChunk(state, findSelectionMatch.line, findSelectionMatch.col, findSelectionMatch.length, true);
+      } else if (remark) {
+        // The repaint replaced the text nodes of the current match.
+        highlightMatchInChunk(state, remark.match.line, remark.match.col, remark.match.length, true, remark.select);
       }
       if (matchAnchor && state.startLine <= matchAnchor.line) {
         // A chunk at or above the match changed height after measurement.
@@ -1373,14 +1380,18 @@
     // Leaving the find bar turns the highlighted match into a real selection
     // so it can be copied, as it would be without the find bar.
     const range = findHighlightRange;
+    const match = findHighlightMatch;
     clearFindHighlight();
     findBar.classList.add("hidden");
     isFindBarOpen = false;
     window.focus();
-    if (range && spacer.contains(range.startContainer)) {
+    if (range && !range.collapsed && spacer.contains(range.startContainer)) {
       const sel = window.getSelection();
       sel.removeAllRanges();
       sel.addRange(range);
+      // A later repaint of the chunk selects the match again.
+      findSelectionRange = range;
+      findSelectionMatch = match;
     }
   }
 
@@ -1459,7 +1470,9 @@
     }
   }
 
-  function highlightMatchInChunk(state, line, col, length, keepScroll) {
+  // select === false re-marks the match without touching the document
+  // selection (the user has moved it elsewhere since).
+  function highlightMatchInChunk(state, line, col, length, keepScroll, select) {
     const pre = state.slot.querySelector("pre");
     if (!pre) {
       return;
@@ -1534,13 +1547,21 @@
         const range = document.createRange();
         range.setStart(startNode, startOffset);
         range.setEnd(endNode, endOffset);
-        // A document selection would pull focus out of the find input, so
-        // while the user types there the match is only highlighted.
-        if (findBar && findBar.contains(document.activeElement) && setFindHighlight(range)) {
+        // While the find bar is open the current match is always marked with
+        // the custom highlight: a document selection alone is not reliably
+        // visible when the WebView lacks focus (opened from Find Files). A
+        // selection would pull focus out of the find input, so while the
+        // user types there the match is only highlighted; otherwise it is
+        // selected as well so it can be copied.
+        const typing = findBar && findBar.contains(document.activeElement);
+        const highlighted = length >= 0 && (isFindBarOpen || typing) && setFindHighlight(range);
+        if (highlighted) {
           findHighlightRange = range;
           findHighlightMatch = { line: line, col: col, length: length };
         } else {
           clearFindHighlight();
+        }
+        if ((!typing || !highlighted) && select !== false) {
           const sel = window.getSelection();
           sel.removeAllRanges();
           sel.addRange(range);
