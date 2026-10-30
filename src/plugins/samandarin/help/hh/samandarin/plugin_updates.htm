@@ -1,0 +1,47 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<title>Plugin Updates</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<link rel="stylesheet" type="text/css" href="../salamander_help.css" />
+<link rel="stylesheet" type="text/css" href="../salamander_help_shared.css" />
+</head>
+<body>
+<div id="help_page">
+<div class="header">Open Salamander: Plugins: Samandarin Update Notifier: Using the Plugin</div>
+<div class="page">
+<h1>Plugin Updates</h1>
+<p>The <em>Check plugin updates...</em> command opens the <em>Plugin Updates</em> window.
+It checks installed plugins and extensions against JSON catalogs and shows the
+installed version, the latest version and the status of each entry.</p>
+<h3>To check plugin updates:</h3>
+<table>
+ <tr><td class="hdr">Menu:</td><td>Plugins/Samandarin Update Notifier/Check plugin updates...</td></tr>
+</table>
+<h3>Status</h3>
+<ul>
+<li><em>Current</em> &ndash; the installed version matches the catalog.</li>
+<li><em>Update available</em> &ndash; the catalog offers a newer version.</li>
+<li><em>Different version</em> &ndash; the installed version differs from the catalog and no update is offered, for example because it is newer.</li>
+<li><em>Not installed</em> &ndash; the catalog entry is not installed.</li>
+<li><em>Not in catalog</em>, <em>Unknown version</em> or <em>Catalog error</em> &ndash; the plugin could not be compared.</li>
+</ul>
+<p>Check <em>Show only updates</em> to hide entries that are up to date. Use <em>Refresh</em>
+to load the catalogs again. The context menu of the list copies a value or a whole row.</p>
+<h3>Installing and updating</h3>
+<p>Select an entry to see its details, including the description, the download page and
+its security capabilities (network access, external processes, script execution).
+Official plugin and extension <code>.7z</code> packages can be installed or updated with
+the <em>Install</em> or <em>Update</em> button. The plugin downloads the package, verifies
+its SHA-256 digest from the catalog and the Authenticode signature of its modules, and
+installs it after Open Salamander exits. Missing dependencies are offered together with
+the selected package. For other entries, <em>Open plugin webpage</em> opens the plugin's
+web page instead.</p>
+<h3>Catalog sources</h3>
+<p>Click <em>Configure sources</em> to edit the list of catalog URLs, one URL per line,
+and confirm it with <em>Save sources</em>.</p>
+</div>
+<div class="footer">&#169; 2024 Open Salamander Authors</div>
+</div>
+</body>
+</html>

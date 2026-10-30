@@ -10,17 +10,18 @@ Full text search stop list file=..\..\shared\help\en\stop.stp
 Full-text search=Yes
 Index file=samandarin.hhk
 Language=0x409 English (United States)
-Title=C# Demo Plugin Help
+Title=Samandarin Update Notifier Help
 
 [WINDOWS]
 $global_ssdefault=,"salamand.chm::\salamand.hhc","samandarin.hhk","hh\samandarin\introduction_intro.htm","hh\samandarin\introduction_intro.htm",,,,"Web Help",0x3520,,0x180e,,,,,,,,0
 
 [FILES]
+hh\samandarin\update_check.htm
+hh\samandarin\plugin_updates.htm
 hh\salamander_help.css
 hh\salamander_help_shared.css
 
 [ALIAS]
-IDH_MENU_HELLO=hh\samandarin\basic_hello.htm
 
 [MAP]
 #include "..\samandarin.rh"

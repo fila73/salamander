@@ -1,0 +1,37 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<HTML>
+<HEAD>
+<meta name="GENERATOR" content="Microsoft&reg; HTML Help Workshop 4.1">
+<!-- Sitemap 1.0 -->
+</HEAD>
+<BODY>
+<OBJECT type="text/site properties">
+</OBJECT>
+<UL>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="Samandarin Update Notifier">
+		<param name="Local" value="hh\samandarin\introduction_intro.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="updates, Samandarin">
+		<param name="Local" value="hh\samandarin\update_check.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="automatic update check">
+		<param name="Local" value="hh\samandarin\update_check.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="plugin updates">
+		<param name="Local" value="hh\samandarin\plugin_updates.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="plugin catalogs">
+		<param name="Local" value="hh\samandarin\plugin_updates.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="installing plugins">
+		<param name="Local" value="hh\samandarin\plugin_updates.htm">
+		</OBJECT>
+</UL>
+</BODY>
+</HTML>

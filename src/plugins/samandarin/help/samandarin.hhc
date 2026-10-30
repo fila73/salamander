@@ -10,26 +10,25 @@
 	</OBJECT>
 	<LI> <OBJECT type="text/sitemap">
 		<param name="Name" value="Introduction">
-	</OBJECT>
+		</OBJECT>
 	<UL>
 		<LI> <OBJECT type="text/sitemap">
-                <param name="Name" value="Introducing the C# Demo Plugin">
+			<param name="Name" value="Introducing the Samandarin Update Notifier">
 			<param name="Local" value="hh\samandarin\introduction_intro.htm">
-		</OBJECT>
+			</OBJECT>
 	</UL>
-        <LI> <OBJECT type="text/sitemap">
-                <param name="Name" value="Using the C# Demo Plugin">
-	</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="Using the Plugin">
+		</OBJECT>
 	<UL>
 		<LI> <OBJECT type="text/sitemap">
-			<param name="Name" value="Basic Features">
-		</OBJECT>
-		<UL>
-			<LI> <OBJECT type="text/sitemap">
-                        <param name="Name" value="Opening the Managed Window">
-                                <param name="Local" value="hh\samandarin\basic_hello.htm">
-				</OBJECT>
-		</UL>
+			<param name="Name" value="Checking for Samandarin Updates">
+			<param name="Local" value="hh\samandarin\update_check.htm">
+			</OBJECT>
+		<LI> <OBJECT type="text/sitemap">
+			<param name="Name" value="Plugin Updates">
+			<param name="Local" value="hh\samandarin\plugin_updates.htm">
+			</OBJECT>
 	</UL>
 </BODY>
 </HTML>
