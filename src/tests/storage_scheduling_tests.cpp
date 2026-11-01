@@ -275,9 +275,9 @@ void TestSchedulingModes()
     CStorageOpView run = ViewOf(a);
 
     Check(CopyMoveShouldStartPaused(CMS_SEQUENTIAL, 0, 1, &cand, &run, 1) == 0,
-          "Sequential unchecked starts alongside an independent operation");
+          "User-controlled unchecked starts alongside an independent operation");
     Check(CopyMoveShouldStartPaused(CMS_SEQUENTIAL, 0, 0, &cand, NULL, 0) == 0,
-          "Sequential may start when the operation queue is idle");
+          "User-controlled may start when the operation queue is idle");
     Check(CopyMoveShouldStartPaused(CMS_MANUAL, 0, 1, &cand, &run, 1) == 0,
           "an unresolved preference uses automatic scheduling for independent operations");
     Check(CopyMoveShouldStartPaused(CMS_MANUAL, 1, 1, &cand, &run, 1) == 0,
@@ -291,10 +291,10 @@ void TestSchedulingModes()
     CStorageOpView sameView = ViewOf(sameHdd);
     Check(CopyMoveShouldStartPaused(CMS_STORAGE_AWARE, 0, 1, &sameView, &run, 1) != 0,
           "Storage-aware must queue a second operation on the same HDD");
-    Check(CopyMoveShouldStartPaused(CMS_SEQUENTIAL, 0, 1, &sameView, &run, 1) != 0,
-          "Sequential unchecked must queue a second operation on the same HDD");
+    Check(CopyMoveShouldStartPaused(CMS_SEQUENTIAL, 0, 1, &sameView, &run, 1) == 0,
+          "User-controlled unchecked must start immediately even on the same HDD");
     Check(CopyMoveShouldStartPaused(CMS_SEQUENTIAL, 1, 1, &cand, &run, 1) != 0,
-          "Sequential checked must wait even for an independent earlier operation");
+          "User-controlled checked must wait even for an independent earlier operation");
 }
 
 int WaitReason(int policy, int operationOverride, int anyOtherActive, int hasBarrier,
@@ -353,21 +353,18 @@ void TestTransferModeAdmissionContract()
     COperationStorageUse overlap = UseFrom(LocalDisk(1, 1, SACCESS_WRITE));
     COperationStorageUse independent = UseFrom(LocalDisk(2, 1, SACCESS_WRITE));
     COperationStorageUse unknown = UseFrom(GlobalUnknown(SACCESS_READWRITE));
-    const int sequentialUnchecked = CopyMoveGetSchedulingOverride(CMS_SEQUENTIAL, 0);
-    const int immediate = COSO_START_NOW; // explicit API value; no UI mode produces it
+    const int immediate = CopyMoveGetSchedulingOverride(CMS_SEQUENTIAL, 0);
     const int waitAll = CopyMoveGetSchedulingOverride(CMS_SEQUENTIAL, 1);
-    Check(sequentialUnchecked == COSO_DEFAULT, "Sequential unchecked uses storage-conflict admission, not start-now");
-    Check(WaitReason(COSP_STORAGE_AWARE, sequentialUnchecked, 1, 0, overlap, &hdd, 1) == CSWR_PHYSICAL_DEVICE_CONFLICT,
-          "Sequential unchecked never runs two operations on the same physical disk");
-    Check(waitAll == COSO_WAIT_ALL, "Sequential checked means explicit wait-all");
+    Check(immediate == COSO_START_NOW, "User-controlled unchecked means explicit start-now");
+    Check(waitAll == COSO_WAIT_ALL, "User-controlled checked means explicit wait-all");
     Check(WaitReason(COSP_STORAGE_AWARE, immediate, 1, 1, overlap, &hdd, 1) == CSWR_NONE,
-          "explicit start-now API bypasses physical conflicts and queued waiters");
+          "User-controlled unchecked bypasses physical conflicts and queued waiters");
     Check(WaitReason(COSP_STORAGE_AWARE, immediate, 1, 0, unknown, &hdd, 1) == CSWR_NONE,
-          "explicit start-now API bypasses unknown-storage fallback");
+          "User-controlled unchecked bypasses unknown-storage fallback");
     Check(WaitReason(COSP_STORAGE_AWARE, waitAll, 1, 0, independent, &hdd, 1) == CSWR_EXPLICIT_OR_GLOBAL_WAIT,
-          "Sequential wait includes earlier independent operations");
+          "User-controlled wait includes earlier independent operations");
     Check(WaitReason(COSP_STORAGE_AWARE, waitAll, 0, 0, independent) == CSWR_NONE,
-          "Sequential wait is satisfied when no predecessor remains");
+          "User-controlled wait is satisfied when no predecessor remains");
 
     COperationStorageUse nvme = UseFrom(LocalMedia(10, SMEDIA_NVME, SACCESS_WRITE));
     COperationStorageUse writers[2] = {nvme, nvme};

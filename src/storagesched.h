@@ -142,9 +142,7 @@ extern "C"
     int StorageOperationIsFifoBarrier(int policy, int operationOverride);
 
     // Maps the selected transfer mode and the legacy checkbox to COSO_*.
-    // Sequential + checked box = wait-all; otherwise storage-conflict admission
-    // (COSO_DEFAULT), never an unconditional start. Automatic mode always uses
-    // resource scheduling, even with a checked box.
+    // Automatic mode always uses resource scheduling, even with a checked box.
     int CopyMoveGetSchedulingOverride(int transferMode, int legacyWait);
 
     // Returns CSWR_* for the first reason preventing admission, or CSWR_NONE.

@@ -403,7 +403,7 @@ BEGIN
     PUSHBUTTON      "",IDB_BROWSE,223,18,23,14,WS_GROUP
     LTEXT           "&Transfer mode:",IDC_CM_TRANSFERMODE_LABEL,10,37,65,8
     COMBOBOX        IDC_CM_TRANSFERMODE,78,35,167,49,CBS_DROPDOWNLIST | WS_TABSTOP
-    CONTROL         "&Wait until all earlier Copy/Move operations are finished",IDC_CM_STARTONIDLE,
+    CONTROL         "&Wait until all other Copy/Move operations are finished",IDC_CM_STARTONIDLE,
                     "Button",BS_AUTOCHECKBOX | WS_GROUP | WS_TABSTOP,10,50,192,12
     LTEXT           "Conflict &handling:",IDC_CM_CONFLICTMODE_LABEL,10,66,65,8
     COMBOBOX        IDC_CM_CONFLICTMODE,78,64,167,49,CBS_DROPDOWNLIST | WS_TABSTOP
@@ -443,7 +443,7 @@ BEGIN
     LISTBOX         IDC_COPY_TARGETDIRS,10,19,235,44,LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
     LTEXT           "&Transfer mode:",IDC_CM_TRANSFERMODE_LABEL,10,82,65,8
     COMBOBOX        IDC_CM_TRANSFERMODE,78,80,167,49,CBS_DROPDOWNLIST | WS_TABSTOP
-    CONTROL         "&Wait until all earlier Copy/Move operations are finished",IDC_CM_STARTONIDLE,
+    CONTROL         "&Wait until all other Copy/Move operations are finished",IDC_CM_STARTONIDLE,
                     "Button",BS_AUTOCHECKBOX | WS_GROUP | WS_TABSTOP,10,95,192,12
     LTEXT           "Conflict &handling:",IDC_CM_CONFLICTMODE_LABEL,10,111,65,8
     COMBOBOX        IDC_CM_CONFLICTMODE,78,109,167,49,CBS_DROPDOWNLIST | WS_TABSTOP

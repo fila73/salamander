@@ -45,7 +45,7 @@ def main() -> None:
     texts_rc2 = (src / "lang/texts.rc2").read_text(encoding="utf-8")
 
     require(sched_h, "CMS_STORAGE_AWARE", "parallel file-transfer mode")
-    require(sched_h, "CMS_SEQUENTIAL", "Sequential transfer mode compatibility value")
+    require(sched_h, "CMS_SEQUENTIAL", "User-controlled transfer mode compatibility value")
     require(sched_h, "COSP_STORAGE_AWARE", "storage-aware operation policy")
     require(sched_h, "COSP_GLOBAL_SEQUENTIAL", "legacy global sequential API value")
     require(sched_h, "COSP_ASK", "legacy ask API value")
@@ -141,8 +141,8 @@ def main() -> None:
     if not (0 <= history_add < file_operations_add < recycle_bin_add):
         raise AssertionError("File Operations page is not between History and Recycle Bin")
     forbid(lang_rc, "IDC_COPYMOVE_PARALLEL_WARNING", "inline parallel-files warning label")
-    require(texts_rc2, 'IDS_COPYMOVE_PREFERRED_SEQUENTIAL, "Sequential (one file at a time)"',
-            "Sequential name for the legacy transfer choice")
+    require(texts_rc2, 'IDS_COPYMOVE_PREFERRED_SEQUENTIAL, "User-controlled"',
+            "User-controlled name for the legacy transfer choice")
     require(dialogs3, "IDC_CM_TRANSFERMODE",
             "per-operation transfer-mode selector")
     require(dialogs3, "OperationSchedulingOverrideInOut",
@@ -157,9 +157,9 @@ def main() -> None:
     transfer_controls = function_slice(
         dialogs3, "void CCopyMoveMoreDialog::UpdateTransferModeControls()", "\n}\n")
     require(transfer_controls, "OperationSchedulingOverrideInOut != NULL && userControlled",
-            "wait checkbox enabled only in Sequential mode")
+            "wait checkbox enabled only in User-controlled mode")
     require(transfer_controls, "!userControlled || LegacyWait ? BST_CHECKED : BST_UNCHECKED",
-            "Storage-aware checked indicator and restored Sequential choice")
+            "Storage-aware checked indicator and restored User-controlled choice")
     require(dialogs3, "LOWORD(wParam) == IDC_CM_TRANSFERMODE && HIWORD(wParam) == CBN_SELCHANGE",
             "transfer selector updates wait controls immediately")
     require(dialogs3, "IsWindowEnabled(GetDlgItem(HWindow, IDC_CM_STARTONIDLE))",
