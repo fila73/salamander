@@ -279,3 +279,5 @@ src/plugins/**/vcxproj/**/salamander/
 src/plugins/zip/vcxproj/selfextr/Release/
 src/plugins/zip/vcxproj/selfextr/ReleaseEx/
 src/plugins/zip/vcxproj/selfextr/sfx/
+
+_build/

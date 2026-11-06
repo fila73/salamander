@@ -1,5 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Open Salamander Authors
+// SPDX-FileCopyrightText: 2026 Open Samandarin Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
+// | Date | Summary | Reason | Ticket | Model |
+// | 2026-11-05 | Rasterize Salamatrix FS SVG icons at 16/32/48. | Thumbnail/Tiles views requested SALICONSIZE_48 but icons were forced to 16px. | | Composer |
+// | 2026-11-06 | Apply ViewFile placement and default JSON Viewer title on the host. | Title/size must work even when the worker drops ui.viewer options. |  | Composer |
+// | 2026-11-06 | Pass viewer title, placement, package icon, and GUI bridge. | JSON Viewer (nodeJS) needs correct chrome, size, and Find menus. |  | Composer |
+// | 2026-11-04 | Pick up extension installs that finish after startup. | The install helper copies files only after Samandarin exits, so a restart that overlaps that copy never saw the new package. | | Grok 4.7 |
+// | 2026-11-04 | Register updater installs and report a missing runtime. | New extension packages were not added on the next start, and activation failed without telling the user which runtime was missing. | | Grok 4.7 |
 
 #include "precomp.h"
 #include "salamatrix_packages.h"
@@ -1036,6 +1043,23 @@ public:
             *lockOwner = FALSE;
         if (Owner == NULL || name == NULL)
             return FALSE;
+        // Remember Salamander's viewer rectangle on the host. ui.viewer.open
+        // reuses it when the script (or an older worker) does not echo geometry.
+        Owner->HasPendingViewerPlacement = width > 0 && height > 0;
+        Owner->PendingViewerLeft = left;
+        Owner->PendingViewerTop = top;
+        Owner->PendingViewerWidth = width;
+        Owner->PendingViewerHeight = height;
+        Owner->PendingViewerShowCmd = showCmd;
+        Owner->PendingViewerAlwaysOnTop = alwaysOnTop;
+        Owner->PendingViewerDocumentName.clear();
+        {
+            const char* slash = strrchr(name, '\\');
+            const char* slashFwd = strrchr(name, '/');
+            if (slashFwd != NULL && (slash == NULL || slashFwd > slash))
+                slash = slashFwd;
+            Owner->PendingViewerDocumentName = slash != NULL ? slash + 1 : name;
+        }
         std::string invocation =
             std::string("{\"role\":\"viewer\",\"path\":\"") +
             JsonEscape(name) + "\",\"window\":{" +
@@ -1102,6 +1126,22 @@ static BOOL SalamatrixFileIconPathToWide(
     return TRUE;
 }
 
+// Map SALICONSIZE_xxx to the matching pixel bucket. Thumbnail/Tiles views
+// request SALICONSIZE_48; treating anything other than 32 as 16 left those
+// views with upscaled muddy SVG icons.
+static int SalamatrixIconSizeToPixels(int iconSize)
+{
+    switch (iconSize)
+    {
+    case SALICONSIZE_48:
+        return 48;
+    case SALICONSIZE_32:
+        return 32;
+    default:
+        return 16;
+    }
+}
+
 static HICON SalamatrixExtractFileIcon(
     const std::string& fileIcon, int iconSize)
 {
@@ -1118,7 +1158,7 @@ static HICON SalamatrixExtractFileIcon(
                              ? L"\\\\?\\UNC\\" + extractionPath.substr(2)
                              : L"\\\\?\\" + extractionPath;
     }
-    const int size = iconSize == SALICONSIZE_32 ? 32 : 16;
+    const int size = SalamatrixIconSizeToPixels(iconSize);
     HICON icon = NULL;
     UINT iconId = 0;
     UINT extracted = PrivateExtractIconsW(
@@ -1326,7 +1366,7 @@ public:
             ImageList_Destroy(Images);
             Images = NULL;
         }
-        const int size = iconSize == SALICONSIZE_32 ? 32 : 16;
+        const int size = SalamatrixIconSizeToPixels(iconSize);
         Images = ImageList_Create(size, size, ILC_COLOR32 | ILC_MASK, 1, 1);
         if (Images == NULL)
             return NULL;
@@ -1353,6 +1393,7 @@ public:
         const CFileData* file, int iconSize, BOOL& destroyIcon)
     {
         destroyIcon = TRUE;
+        const int pixels = SalamatrixIconSizeToPixels(iconSize);
         const SalamatrixFileSystemItemData* data = file != NULL
             ? reinterpret_cast<const SalamatrixFileSystemItemData*>(file->PluginData)
             : NULL;
@@ -1363,11 +1404,10 @@ public:
             const std::string& preferred = dark
                 ? data->Item.IconDark : data->Item.Icon;
             HICON icon = preferred.empty() ? NULL
-                : SalamanderGUI->CreateSVGIcon(
-                      preferred.c_str(), iconSize == SALICONSIZE_32 ? 32 : 16);
+                : SalamanderGUI->CreateSVGIcon(preferred.c_str(), pixels);
             if (icon == NULL && dark && !data->Item.Icon.empty())
                 icon = SalamanderGUI->CreateSVGIcon(
-                    data->Item.Icon.c_str(), iconSize == SALICONSIZE_32 ? 32 : 16);
+                    data->Item.Icon.c_str(), pixels);
             if (icon != NULL)
                 return icon;
         }
@@ -1380,9 +1420,7 @@ public:
             return icon;
         return reinterpret_cast<HICON>(LoadImage(
             DLLInstance, MAKEINTRESOURCE(IDI_PLUGINICON), IMAGE_ICON,
-            iconSize == SALICONSIZE_32 ? 32 : 16,
-            iconSize == SALICONSIZE_32 ? 32 : 16,
-            SalamanderGeneral->GetIconLRFlags()));
+            pixels, pixels, SalamanderGeneral->GetIconLRFlags()));
     }
     virtual int WINAPI CompareFilesFromFS(
         const CFileData* file1, const CFileData* file2)
@@ -2507,6 +2545,7 @@ PackageManager::PackageManager()
       Sides(NULL),
       Storage(NULL),
       UI(NULL),
+      LastExtensionVer(0),
       Menu(NULL),
       Viewer(NULL),
       FileSystem(NULL),
@@ -2516,7 +2555,18 @@ PackageManager::PackageManager()
       ActiveHostDispatches(0),
       ActiveExecutions(0),
       ShuttingDown(FALSE),
-      ExecutionsIdleEvent(CreateEvent(NULL, TRUE, TRUE, NULL))
+      ExecutionsIdleEvent(CreateEvent(NULL, TRUE, TRUE, NULL)),
+      ExtensionInstallTimer(0),
+      ExtensionInstallTicks(0),
+      IntegratingExtensions(FALSE),
+      HasPendingViewerPlacement(false),
+      PendingViewerLeft(0),
+      PendingViewerTop(0),
+      PendingViewerWidth(0),
+      PendingViewerHeight(0),
+      PendingViewerShowCmd(SW_SHOWNORMAL),
+      PendingViewerAlwaysOnTop(FALSE),
+      PendingViewerDocumentName()
 {
     InitializeCriticalSection(&FileSystemActionThreadsLock);
 }
@@ -2572,6 +2622,7 @@ BOOL PackageManager::Initialize(
 void PackageManager::Shutdown()
 {
     InterlockedExchange(&ShuttingDown, TRUE);
+    StopExtensionInstallWatch();
     for (size_t index = 0; index < Packages.size(); ++index)
         InterlockedExchange(&Packages[index]->Stopping, TRUE);
     // Stop persistent runtimes before waiting for active executions. An
@@ -2633,10 +2684,16 @@ void PackageManager::LoadConfiguration(HKEY key, CSalamanderRegistryAbstract* re
     ExtensionOrder.clear();
     RemovedExtensions.clear();
     RegisteredViewerKeys.clear();
+    LastExtensionVer = 0;
     Roots.push_back(ExpandRoot(L"$(SalDir)\\extensions"));
     Roots.push_back(ExpandRoot(L"$(SalDir)\\plugins\\automation\\scripts"));
     if (key == NULL || registry == NULL)
         return;
+    DWORD storedVersion = 0;
+    if (registry->GetValue(
+            key, "LastExtensionVer", REG_DWORD, &storedVersion, sizeof(storedVersion)) &&
+        storedVersion <= 0x7FFFFFFF)
+        LastExtensionVer = static_cast<int>(storedVersion);
     HKEY rootsKey = NULL;
     if (registry->OpenKey(key, "ExtensionRoots", rootsKey))
     {
@@ -2704,6 +2761,9 @@ void PackageManager::SaveConfiguration(HKEY key, CSalamanderRegistryAbstract* re
 {
     if (key == NULL || registry == NULL)
         return;
+    DWORD storedVersion = LastExtensionVer > 0 ? static_cast<DWORD>(LastExtensionVer) : 0;
+    registry->SetValue(
+        key, "LastExtensionVer", REG_DWORD, &storedVersion, sizeof(storedVersion));
     HKEY rootsKey = NULL;
     if (!registry->CreateKey(key, "ExtensionRoots", rootsKey))
         return;
@@ -2804,6 +2864,7 @@ void PackageManager::Refresh()
     }
     RefreshInProgress = TRUE;
     RefreshPending = FALSE;
+    ApplyPendingExtensionInstalls();
     ReportStartupProgress(
         ssppDiscoveringExtensions, NULL, 0,
         static_cast<int>(Roots.size() + CustomPackages.size()));
@@ -2831,6 +2892,7 @@ void PackageManager::Refresh()
     if (General != NULL)
         General->PostPluginMenuChanged();
     RefreshInProgress = FALSE;
+    StartExtensionInstallWatch();
     if (RefreshPending && ActiveHostDispatches == 0 &&
         ActiveExecutions == 0)
         Refresh();
@@ -3451,6 +3513,7 @@ void PackageManager::SetRefreshDeferred(BOOL deferred)
 void PackageManager::CompleteStartupRefreshBatch()
 {
     RefreshDeferred = FALSE;
+    StartExtensionInstallWatch();
     if (!RefreshPending)
         return;
 
@@ -3764,9 +3827,11 @@ BOOL PackageManager::ExecuteCommand(
                 BOOL executed = scriptRunner->ExecuteGenerated(
                     &compatibilityRequest, &compatibilityResult);
                 package->Operations = NULL;
-                return executed;
+                if (executed)
+                    return TRUE;
             }
         }
+        NotifyRuntimeUnavailable(package);
         return FALSE;
     }
     Runtime::RuntimeExecutionRequest request;
@@ -4224,6 +4289,462 @@ void PackageManager::ApplyUserOrder()
         Extensions->ApplyExtensionOrder(
             &ids[0], static_cast<int>(ids.size()));
     }
+}
+
+namespace
+{
+bool IsSafeExtensionRelative(const std::string& relative)
+{
+    if (relative.empty() || relative.size() > 16000 ||
+        relative.find(':') != std::string::npos ||
+        relative[0] == '\\' || relative[0] == '/')
+        return false;
+    size_t start = 0;
+    while (start <= relative.size())
+    {
+        size_t slash = relative.find_first_of("\\/", start);
+        std::string part = relative.substr(
+            start, slash == std::string::npos ? std::string::npos : slash - start);
+        if (part.empty() || part == "." || part == "..")
+            return false;
+        if (slash == std::string::npos)
+            break;
+        start = slash + 1;
+    }
+    return true;
+}
+
+BOOL GetNormalizedFullPath(const std::wstring& path, std::wstring* full)
+{
+    if (full == NULL || path.empty())
+        return FALSE;
+    std::vector<wchar_t> buffer(SAL_MAX_PATH);
+    DWORD length = GetFullPathNameW(
+        path.c_str(), static_cast<DWORD>(buffer.size()), &buffer[0], NULL);
+    if (length == 0 || length >= buffer.size())
+        return FALSE;
+    full->assign(&buffer[0], length);
+    while (full->size() > 3 &&
+           (full->back() == L'\\' || full->back() == L'/'))
+        full->pop_back();
+    return !full->empty();
+}
+
+bool IsPathInsideDirectory(const std::wstring& path, const std::wstring& directory)
+{
+    if (directory.empty())
+        return false;
+    if (_wcsicmp(path.c_str(), directory.c_str()) == 0)
+        return true;
+    std::wstring prefix = directory;
+    if (prefix.back() != L'\\' && prefix.back() != L'/')
+        prefix.push_back(L'\\');
+    return prefix.size() < path.size() &&
+           _wcsnicmp(path.c_str(), prefix.c_str(), prefix.size()) == 0;
+}
+
+std::wstring PathForCreateFile(const std::wstring& full)
+{
+    if (full.size() < MAX_PATH || full.compare(0, 4, L"\\\\?\\") == 0)
+        return full;
+    if (full.size() >= 2 && full[0] == L'\\' && full[1] == L'\\')
+        return L"\\\\?\\UNC\\" + full.substr(2);
+    return L"\\\\?\\" + full;
+}
+}
+
+namespace
+{
+PackageManager* ExtensionInstallWatchManager = NULL;
+}
+
+VOID CALLBACK PackageManager::ExtensionInstallTimerProc(
+    HWND, UINT, UINT_PTR, DWORD)
+{
+    PackageManager* manager = ExtensionInstallWatchManager;
+    if (manager == NULL ||
+        InterlockedCompareExchange(&manager->ShuttingDown, FALSE, FALSE) != FALSE)
+        return;
+    // Startup batching still owns the catalog. Keep the watch, but do not
+    // spend its time limit before the real scan has finished.
+    if (manager->RefreshDeferred || manager->RefreshInProgress)
+        return;
+    // The helper waits until this process exits, then copies the package.
+    // A restart started during that copy misses the startup scan. Keep
+    // looking for a few minutes so the package appears without another restart.
+    if (++manager->ExtensionInstallTicks >= 300)
+        manager->StopExtensionInstallWatch();
+    manager->IntegrateNewlyInstalledExtensions();
+}
+
+void PackageManager::StartExtensionInstallWatch()
+{
+    if (ExtensionInstallTimer != 0 ||
+        InterlockedCompareExchange(&ShuttingDown, FALSE, FALSE) != FALSE)
+        return;
+    ExtensionInstallTicks = 0;
+    ExtensionInstallWatchManager = this;
+    ExtensionInstallTimer = SetTimer(NULL, 0, 1000, ExtensionInstallTimerProc);
+}
+
+void PackageManager::StopExtensionInstallWatch()
+{
+    if (ExtensionInstallWatchManager == this)
+        ExtensionInstallWatchManager = NULL;
+    if (ExtensionInstallTimer != 0)
+    {
+        KillTimer(NULL, ExtensionInstallTimer);
+        ExtensionInstallTimer = 0;
+    }
+}
+
+bool PackageManager::HasPackageDirectory(const std::wstring& directory) const
+{
+    for (size_t index = 0; index < Packages.size(); ++index)
+    {
+        const Package* package = Packages[index];
+        if (package != NULL &&
+            _wcsicmp(package->Directory.c_str(), directory.c_str()) == 0)
+            return true;
+    }
+    return false;
+}
+
+bool PackageManager::IsInstallCommitted(const std::wstring& directory) const
+{
+    std::wstring rootFull;
+    std::wstring directoryFull;
+    if (!GetNormalizedFullPath(ExpandRoot(L"$(SalDir)\\extensions"), &rootFull) ||
+        !GetNormalizedFullPath(directory, &directoryFull))
+        return false;
+    // Packages outside the extensions root are not copied by the install
+    // helper, so the startup scan's directory rules still apply.
+    if (!IsPathInsideDirectory(directoryFull, rootFull) ||
+        _wcsicmp(directoryFull.c_str(), rootFull.c_str()) == 0)
+        return true;
+
+    std::wstring relative = directoryFull.substr(rootFull.size());
+    while (!relative.empty() &&
+           (relative.front() == L'\\' || relative.front() == L'/'))
+        relative.erase(relative.begin());
+    relative += L"\\extension.json";
+    for (size_t index = 0; index < relative.size(); ++index)
+        if (relative[index] == L'/')
+            relative[index] = L'\\';
+
+    std::string text;
+    if (!ReadUtf8File(
+            PathForCreateFile(ExpandRoot(L"$(SalDir)\\extensions\\extensions.ver")),
+            &text) ||
+        text.empty())
+        return false;
+    if (text.size() >= 3 &&
+        static_cast<unsigned char>(text[0]) == 0xEF &&
+        static_cast<unsigned char>(text[1]) == 0xBB &&
+        static_cast<unsigned char>(text[2]) == 0xBF)
+        text.erase(0, 3);
+
+    bool first = true;
+    size_t offset = 0;
+    while (offset < text.size())
+    {
+        size_t end = text.find_first_of("\r\n", offset);
+        if (end == std::string::npos)
+            end = text.size();
+        std::string line = text.substr(offset, end - offset);
+        offset = end;
+        while (offset < text.size() && (text[offset] == '\r' || text[offset] == '\n'))
+            ++offset;
+        if (line.empty())
+            continue;
+        if (first)
+        {
+            first = false;
+            continue;
+        }
+        size_t colon = line.find(':');
+        if (colon == std::string::npos || colon + 1 >= line.size())
+            continue;
+        std::wstring recorded;
+        if (!ToWide(line.substr(colon + 1), &recorded))
+            continue;
+        while (!recorded.empty() &&
+               (recorded.back() == L' ' || recorded.back() == L'\t'))
+            recorded.pop_back();
+        for (size_t index = 0; index < recorded.size(); ++index)
+            if (recorded[index] == L'/')
+                recorded[index] = L'\\';
+        if (_wcsicmp(recorded.c_str(), relative.c_str()) == 0)
+            return true;
+    }
+    return false;
+}
+
+void PackageManager::DiscoverMissingPackages(const std::wstring& directory)
+{
+    if (directory.empty() || HasPackageDirectory(directory))
+        return;
+
+    std::wstring manifestPath = directory + L"\\extension.json";
+    DWORD attributes = GetFileAttributesW(PathForCreateFile(manifestPath).c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES &&
+        (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+    {
+        // extension.json is copied before the rest of the tree. Wait until
+        // extensions.ver names this package, which the helper writes last.
+        if (!IsInstallCommitted(directory))
+            return;
+        size_t slash = directory.find_last_of(L"\\/");
+        if (slash == std::wstring::npos)
+            return;
+        std::wstring parent = directory.substr(0, slash);
+        DiscoverDirectory(parent, &directory);
+        return;
+    }
+
+    std::wstring pattern = PathForCreateFile(directory + L"\\*");
+    WIN32_FIND_DATAW data;
+    HANDLE find = FindFirstFileW(pattern.c_str(), &data);
+    if (find == INVALID_HANDLE_VALUE)
+        return;
+    do
+    {
+        if (wcscmp(data.cFileName, L".") == 0 || wcscmp(data.cFileName, L"..") == 0)
+            continue;
+        if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+            (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+            continue;
+        DiscoverMissingPackages(directory + L"\\" + data.cFileName);
+    } while (FindNextFileW(find, &data));
+    FindClose(find);
+}
+
+void PackageManager::IntegrateNewlyInstalledExtensions()
+{
+    if (IntegratingExtensions ||
+        RefreshDeferred || RefreshInProgress ||
+        ActiveHostDispatches != 0 || ActiveExecutions != 0 ||
+        InterlockedCompareExchange(&ShuttingDown, FALSE, FALSE) != FALSE)
+        return;
+    if (General != NULL)
+    {
+        CSalamanderServiceQuery query;
+        CSalamanderServiceResult result;
+        memset(&query, 0, sizeof(query));
+        memset(&result, 0, sizeof(result));
+        query.ServiceId = SALAMANDER_SERVICE_SHUTDOWN_PROGRESS;
+        query.MinimumVersion = SALAMANDER_SHUTDOWN_PROGRESS_VERSION_1_0;
+        if (General->QueryService(&query, &result))
+            return;
+    }
+
+    IntegratingExtensions = TRUE;
+    size_t before = Packages.size();
+    ApplyPendingExtensionInstalls();
+    if (InterlockedCompareExchange(&ShuttingDown, FALSE, FALSE) == FALSE)
+    {
+        for (size_t index = 0; index < Roots.size(); ++index)
+            DiscoverMissingPackages(Roots[index]);
+        for (size_t index = 0; index < CustomPackages.size(); ++index)
+            DiscoverMissingPackages(CustomPackages[index]);
+    }
+    if (Packages.size() != before &&
+        InterlockedCompareExchange(&ShuttingDown, FALSE, FALSE) == FALSE)
+    {
+        ResolveDependenciesAndActivate();
+        ApplyUserOrder();
+        UnregisterToolbarButtons();
+        RegisterToolbarButtons();
+        if (General != NULL)
+            General->PostPluginMenuChanged();
+    }
+    IntegratingExtensions = FALSE;
+}
+
+void PackageManager::ApplyPendingExtensionInstalls()
+{
+    std::wstring versionFile = ExpandRoot(L"$(SalDir)\\extensions\\extensions.ver");
+    std::string text;
+    if (!ReadUtf8File(PathForCreateFile(versionFile), &text) || text.empty())
+        return;
+    if (text.size() >= 3 &&
+        static_cast<unsigned char>(text[0]) == 0xEF &&
+        static_cast<unsigned char>(text[1]) == 0xBB &&
+        static_cast<unsigned char>(text[2]) == 0xBF)
+        text.erase(0, 3);
+
+    int headerVersion = 0;
+    int reachedVersion = LastExtensionVer;
+    bool waitingForManifest = false;
+    bool first = true;
+    size_t offset = 0;
+    while (offset < text.size())
+    {
+        size_t end = text.find_first_of("\r\n", offset);
+        if (end == std::string::npos)
+            end = text.size();
+        std::string line = text.substr(offset, end - offset);
+        offset = end;
+        while (offset < text.size() && (text[offset] == '\r' || text[offset] == '\n'))
+            ++offset;
+        if (line.empty())
+            continue;
+        if (first)
+        {
+            first = false;
+            headerVersion = atoi(line.c_str());
+            // Replaying the same file must not undo a removal the user makes
+            // afterwards. A record whose manifest cannot be read yet does not
+            // move the counter, so the install helper can finish the copy.
+            if (headerVersion <= LastExtensionVer)
+                return;
+            continue;
+        }
+        size_t colon = line.find(':');
+        if (colon == std::string::npos || colon == 0)
+            continue;
+        int version = atoi(line.c_str());
+        if (version <= LastExtensionVer)
+            continue;
+        bool notReady = false;
+        if (!AcceptInstalledExtensionManifest(line.substr(colon + 1), &notReady) &&
+            notReady)
+        {
+            waitingForManifest = true;
+            break;
+        }
+        if (version > reachedVersion)
+            reachedVersion = version;
+    }
+    if (!waitingForManifest && headerVersion > reachedVersion)
+        reachedVersion = headerVersion;
+    if (reachedVersion > LastExtensionVer)
+        LastExtensionVer = reachedVersion;
+}
+
+BOOL PackageManager::AcceptInstalledExtensionManifest(
+    const std::string& relativePath, bool* notReady)
+{
+    if (notReady != NULL)
+        *notReady = false;
+    std::string relative = relativePath;
+    while (!relative.empty() &&
+           (relative.back() == ' ' || relative.back() == '\t' ||
+            relative.back() == '\r' || relative.back() == '\n'))
+        relative.pop_back();
+    while (!relative.empty() && (relative.front() == ' ' || relative.front() == '\t'))
+        relative.erase(relative.begin());
+    if (!IsSafeExtensionRelative(relative))
+        return TRUE;
+
+    std::wstring relativeWide;
+    if (!ToWide(relative, &relativeWide))
+        return FALSE;
+    std::wstring extensionsRoot = ExpandRoot(L"$(SalDir)\\extensions");
+    std::wstring extensionsFull;
+    if (!GetNormalizedFullPath(extensionsRoot, &extensionsFull))
+        return FALSE;
+    std::wstring combined = extensionsFull;
+    if (!combined.empty() && combined.back() != L'\\')
+        combined.push_back(L'\\');
+    combined += relativeWide;
+    std::wstring manifestFull;
+    if (!GetNormalizedFullPath(combined, &manifestFull) ||
+        !IsPathInsideDirectory(manifestFull, extensionsFull) ||
+        _wcsicmp(manifestFull.c_str(), extensionsFull.c_str()) == 0)
+        return TRUE;
+    size_t leafSlash = manifestFull.find_last_of(L"\\/");
+    std::wstring leaf = leafSlash == std::wstring::npos
+                            ? manifestFull
+                            : manifestFull.substr(leafSlash + 1);
+    if (_wcsicmp(leaf.c_str(), L"extension.json") != 0)
+        return TRUE;
+
+    std::string json;
+    if (!ReadUtf8File(PathForCreateFile(manifestFull), &json))
+    {
+        if (notReady != NULL)
+            *notReady = true;
+        return FALSE;
+    }
+    if (json.size() >= 3 &&
+        static_cast<unsigned char>(json[0]) == 0xEF &&
+        static_cast<unsigned char>(json[1]) == 0xBB &&
+        static_cast<unsigned char>(json[2]) == 0xBF)
+        json.erase(0, 3);
+    CExtensionManifest manifest;
+    CExtensionManifestError error;
+    if (!manifest.Parse(json.data(), json.size(), error) ||
+        !CExtensionManifest::IsSafeRelativeEntryPoint(manifest.EntryPoint) ||
+        manifest.Id.empty())
+        return FALSE;
+
+    for (std::vector<std::string>::iterator item = RemovedExtensions.begin();
+         item != RemovedExtensions.end();)
+    {
+        if (_stricmp(item->c_str(), manifest.Id.c_str()) == 0)
+            item = RemovedExtensions.erase(item);
+        else
+            ++item;
+    }
+
+    std::wstring packageDirectory = manifestFull;
+    size_t slash = packageDirectory.find_last_of(L"\\/");
+    if (slash == std::wstring::npos)
+        return TRUE;
+    packageDirectory.erase(slash);
+    bool covered = false;
+    for (size_t index = 0; index < Roots.size(); ++index)
+    {
+        std::wstring rootFull;
+        if (GetNormalizedFullPath(Roots[index], &rootFull) &&
+            IsPathInsideDirectory(packageDirectory, rootFull))
+        {
+            covered = true;
+            break;
+        }
+    }
+    if (!covered)
+    {
+        bool listed = false;
+        for (size_t index = 0; index < CustomPackages.size(); ++index)
+        {
+            if (_wcsicmp(CustomPackages[index].c_str(), packageDirectory.c_str()) == 0)
+            {
+                listed = true;
+                break;
+            }
+        }
+        if (!listed)
+            CustomPackages.push_back(packageDirectory);
+    }
+    return TRUE;
+}
+
+void PackageManager::NotifyRuntimeUnavailable(const Package* package)
+{
+    if (package == NULL)
+        return;
+    HWND parent = General != NULL ? General->GetMsgBoxParent() : NULL;
+    HMODULE host = GetModuleHandle(NULL);
+    typedef void(WINAPI* ShowUnavailableRuntimesProc)(HWND, const char*);
+    ShowUnavailableRuntimesProc show = host == NULL
+                                           ? NULL
+                                           : reinterpret_cast<ShowUnavailableRuntimesProc>(
+                                                 GetProcAddress(
+                                                     host, "SalamanderShowUnavailableExtensionRuntimes"));
+    if (show != NULL)
+    {
+        show(parent, package->Id.c_str());
+        return;
+    }
+    if (General == NULL)
+        return;
+    const std::string& name = package->Manifest.Name.empty() ? package->Id : package->Manifest.Name;
+    std::string message = "The extension \"" + name +
+                          "\" could not be activated because its runtime (" +
+                          package->Manifest.RuntimeId + ") is not available.";
+    General->SalMessageBox(parent, message.c_str(), "Error", MB_OK | MB_ICONEXCLAMATION);
 }
 
 BOOL PackageManager::InstallManifest(const wchar_t* manifestPath)
@@ -5774,9 +6295,24 @@ BOOL WINAPI PackageManager::HostDispatch(
     {
         std::string path;
         std::string renderer = "auto";
+        std::string title;
+        std::string documentName;
         if (!Runtime::Protocol::Json::FindStringMember(payloadJson, "path", &path) || path.empty())
             return CopyResult("{\"ok\":false,\"error\":\"viewer path is required\"}", resultJson, resultCapacity, resultLength);
         Runtime::Protocol::Json::FindStringMember(payloadJson, "renderer", &renderer);
+        Runtime::Protocol::Json::FindStringMember(payloadJson, "title", &title);
+        Runtime::Protocol::Json::FindStringMember(payloadJson, "documentName", &documentName);
+        // Keep a stable window title even when an older worker drops `title`.
+        if (title.empty())
+        {
+            if (_stricmp(package->Id.c_str(), "JsonViewerNodeJS") == 0 ||
+                _stricmp(package->Id.c_str(), "OpenSalamander.JsonWebViewer") == 0)
+                title = "JSON Viewer";
+            else if (!package->Manifest.Name.empty())
+                title = package->Manifest.Name;
+        }
+        if (documentName.empty() && !owner->PendingViewerDocumentName.empty())
+            documentName = owner->PendingViewerDocumentName;
         std::wstring widePath;
         if (!ToWide(path, &widePath))
             return CopyResult("{\"ok\":false,\"error\":\"viewer path is not valid UTF-8\"}", resultJson, resultCapacity, resultLength);
@@ -5803,10 +6339,44 @@ BOOL WINAPI PackageManager::HostDispatch(
         RECT placement = {};
         HWND parent = owner->General->GetMainWindowHWND();
         GetWindowRect(parent, &placement);
-        placement.left += 48;
-        placement.top += 48;
-        placement.right = placement.left + (std::max)(placement.right - placement.left - 96L, 640L);
-        placement.bottom = placement.top + (std::max)(placement.bottom - placement.top - 96L, 480L);
+        int left = 0;
+        int top = 0;
+        int width = 0;
+        int height = 0;
+        const bool hasLeft = Runtime::Protocol::Json::FindIntegerMember(payloadJson, "left", &left) != FALSE;
+        const bool hasTop = Runtime::Protocol::Json::FindIntegerMember(payloadJson, "top", &top) != FALSE;
+        const bool hasWidth = Runtime::Protocol::Json::FindIntegerMember(payloadJson, "width", &width) != FALSE;
+        const bool hasHeight = Runtime::Protocol::Json::FindIntegerMember(payloadJson, "height", &height) != FALSE;
+        if (hasLeft && hasTop && hasWidth && hasHeight && width > 0 && height > 0)
+        {
+            placement.left = left;
+            placement.top = top;
+            placement.right = left + width;
+            placement.bottom = top + height;
+        }
+        else if (owner->HasPendingViewerPlacement &&
+                 owner->PendingViewerWidth > 0 && owner->PendingViewerHeight > 0)
+        {
+            placement.left = owner->PendingViewerLeft;
+            placement.top = owner->PendingViewerTop;
+            placement.right = owner->PendingViewerLeft + owner->PendingViewerWidth;
+            placement.bottom = owner->PendingViewerTop + owner->PendingViewerHeight;
+        }
+        // Consume the ViewFile rectangle/name after the first open attempt so a
+        // later unrelated viewer.open does not reuse a stale size or caption.
+        owner->HasPendingViewerPlacement = false;
+        owner->PendingViewerDocumentName.clear();
+        int showCmd = SW_SHOWNORMAL;
+        if (!Runtime::Protocol::Json::FindIntegerMember(payloadJson, "showCmd", &showCmd) ||
+            showCmd <= 0)
+        {
+            showCmd = owner->PendingViewerShowCmd > 0
+                          ? static_cast<int>(owner->PendingViewerShowCmd)
+                          : SW_SHOWNORMAL;
+        }
+        BOOL alwaysOnTop = FALSE;
+        if (!Runtime::Protocol::Json::FindBoolMember(payloadJson, "alwaysOnTop", &alwaysOnTop))
+            alwaysOnTop = owner->PendingViewerAlwaysOnTop;
         BOOL dark = FALSE;
         int configType = 0;
         owner->General->GetConfigParameter(SALCFG_USEWINDOWSDARKMODE, &dark, sizeof(dark), &configType);
@@ -5815,8 +6385,17 @@ BOOL WINAPI PackageManager::HostDispatch(
             owner->General->GetCurrentColor(SALCOL_HOT_PANEL),
             owner->General->GetCurrentColor(SALCOL_VIEWER_FG_SELECTED),
             owner->General->GetCurrentColor(SALCOL_VIEWER_BK_SELECTED)};
+        std::wstring customTitle;
+        std::wstring customDocumentName;
+        if (!title.empty() && !ToWide(title, &customTitle))
+            return CopyResult("{\"ok\":false,\"error\":\"viewer title is not valid UTF-8\"}", resultJson, resultCapacity, resultLength);
+        if (!documentName.empty() && !ToWide(documentName, &customDocumentName))
+            return CopyResult("{\"ok\":false,\"error\":\"viewer documentName is not valid UTF-8\"}", resultJson, resultCapacity, resultLength);
+        const wchar_t* pluginName = customTitle.empty()
+            ? owner->General->LoadStrW(DLLInstance, IDS_VIEWER_NAME)
+            : customTitle.c_str();
         NativeViewerStrings strings = {
-            owner->General->LoadStrW(DLLInstance, IDS_VIEWER_NAME), owner->General->LoadStrW(DLLInstance, IDS_VIEWER_FILE),
+            pluginName, owner->General->LoadStrW(DLLInstance, IDS_VIEWER_FILE),
             owner->General->LoadStrW(DLLInstance, IDS_VIEWER_VIEW), owner->General->LoadStrW(DLLInstance, IDS_VIEWER_CLOSE),
             owner->General->LoadStrW(DLLInstance, IDS_VIEWER_REFRESH), owner->General->LoadStrW(DLLInstance, IDS_VIEWER_ZOOM_IN),
             owner->General->LoadStrW(DLLInstance, IDS_VIEWER_ZOOM_OUT), owner->General->LoadStrW(DLLInstance, IDS_VIEWER_ZOOM_RESET),
@@ -5832,7 +6411,65 @@ BOOL WINAPI PackageManager::HostDispatch(
         strings.findNext = owner->General->LoadStrW(DLLInstance, IDS_VIEWER_FIND_NEXT);
         strings.findPrevious = owner->General->LoadStrW(DLLInstance, IDS_VIEWER_FIND_PREVIOUS);
         strings.goToLine = owner->General->LoadStrW(DLLInstance, IDS_VIEWER_GOTO_LINE);
-        NativeViewerRequest request = {DLLInstance, parent, widePath.c_str(), placement, SW_SHOWNORMAL, false, NULL, kind, theme, strings};
+
+        LOGFONT menuFont = {};
+        if (!owner->General->GetConfigParameter(SALCFG_MENUFONT, &menuFont, sizeof(menuFont), nullptr))
+            GetObjectW(GetStockObject(DEFAULT_GUI_FONT), sizeof(menuFont), &menuFont);
+        LOGFONT viewerFont = {};
+        if (!owner->General->GetConfigParameter(SALCFG_VIEWERFONT, &viewerFont, sizeof(viewerFont), nullptr))
+        {
+            viewerFont.lfHeight = -13;
+            viewerFont.lfWeight = FW_NORMAL;
+            strcpy_s(viewerFont.lfFaceName, "Consolas");
+        }
+
+        HICON icon = NULL;
+        HICON iconSmall = NULL;
+        bool destroyIcons = false;
+        if (SalamanderGUI != NULL)
+        {
+            const bool useDarkIcon =
+                DarkModeIsWindowsDarkSchemeSelected() &&
+                !package->IconDarkPath.empty();
+            const char* preferredPath =
+                useDarkIcon ? package->IconDarkPath.c_str()
+                            : package->IconPath.c_str();
+            if (preferredPath != NULL && preferredPath[0] != '\0')
+            {
+                icon = SalamanderGUI->CreateSVGIcon(preferredPath, 32);
+                iconSmall = SalamanderGUI->CreateSVGIcon(preferredPath, 16);
+                if ((icon == NULL || iconSmall == NULL) && useDarkIcon &&
+                    !package->IconPath.empty())
+                {
+                    if (icon == NULL)
+                        icon = SalamanderGUI->CreateSVGIcon(package->IconPath.c_str(), 32);
+                    if (iconSmall == NULL)
+                        iconSmall = SalamanderGUI->CreateSVGIcon(package->IconPath.c_str(), 16);
+                }
+                destroyIcons = icon != NULL || iconSmall != NULL;
+            }
+        }
+
+        NativeViewerRequest request = {};
+        request.module = DLLInstance;
+        request.owner = parent;
+        request.filePath = widePath.c_str();
+        request.placement = placement;
+        request.showCommand = static_cast<UINT>(showCmd);
+        request.alwaysOnTop = alwaysOnTop != FALSE;
+        request.closeEvent = NULL;
+        request.kind = kind;
+        request.theme = theme;
+        request.strings = strings;
+        request.menuFont = menuFont;
+        request.gui = SalamanderGUI;
+        request.viewerFont = viewerFont;
+        request.general = owner->General;
+        request.icon = icon;
+        request.iconSmall = iconSmall;
+        request.destroyIcons = destroyIcons;
+        request.documentName = customDocumentName.empty() ? NULL : customDocumentName.c_str();
+        // NativeViewer_Show takes ownership of destroyIcons handles, including on failure.
         const bool opened = NativeViewer_Show(request);
         return CopyResult(std::string("{\"ok\":true,\"opened\":") + (opened ? "true}" : "false}"),
                           resultJson, resultCapacity, resultLength);

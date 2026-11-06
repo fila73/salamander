@@ -1,6 +1,14 @@
 // SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2026 Open Samandarin Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 // CommentsTranslationProject: TRANSLATED
+/*
+| Date | Summary | Reason | Ticket | Model |
+| 2026-11-04 | Cache line-number checkpoints; keep wrap painting aligned with text elements. | Slow scrolling at EOF (#746) rescanned the whole file for every gutter/status update. | https://github.com/KRtkovo-eu-AI/salamander/issues/746 | Composer |
+| 2026-11-05 | Initialize previous-line size cache used by line-up scrolling. | Keep scroll-up as cheap as scroll-down after navigating large decoded files (#746). | https://github.com/KRtkovo-eu-AI/salamander/issues/746 | Composer |
+| 2026-11-05 | Build a full logical-line start index for O(log n) line-up. | Scroll-up remained much slower than scroll-down because each step rescanned backwards (#746). | https://github.com/KRtkovo-eu-AI/salamander/issues/746 | Composer |
+| 2026-11-05 | Keep HistoryComboBox edit text after Unicode CB_ADDSTRING. | Find Look in showed history[0] instead of the current panel path on reopen. | https://github.com/KRtkovo-eu-AI/salamander/issues/743 | Composer |
+*/
 
 #include "precomp.h"
 #include "common/winlibdpi.h"
@@ -80,6 +88,98 @@ BOOL ViewerFontMeasured = FALSE;
 BOOL ViewerFontNeedsMapping = FALSE;
 char ViewerFontMapping[256];
 
+static HWND ResolveHistoryComboEditControl(HWND ctrl)
+{
+    char className[16];
+    if (GetClassName(ctrl, className, (int)ARRAYSIZE(className)) > 0 &&
+        _stricmp(className, "ComboBox") == 0)
+    {
+        COMBOBOXINFO info;
+        info.cbSize = sizeof(info);
+        if (GetComboBoxInfo(ctrl, &info) && info.hwndItem != NULL)
+            return info.hwndItem;
+    }
+    return ctrl;
+}
+
+static BOOL IsHistoryControlUnicode(HWND ctrl)
+{
+    HWND edit = ResolveHistoryComboEditControl(ctrl);
+    return IsWindowUnicode(ctrl) || IsWindowUnicode(edit);
+}
+
+static std::wstring HistoryTextToWide(const char* text)
+{
+    if (text == NULL)
+        text = "";
+    std::wstring wide = SalMultiByteToWidePath(text, CP_UTF8);
+    if (wide.empty() && text[0] != 0 && GetACP() != CP_UTF8)
+        wide = SalMultiByteToWidePath(text, CP_ACP);
+    return wide;
+}
+
+static bool GetHistoryControlTextUtf8(HWND ctrl, char* buffer, int bufferSize)
+{
+    if (buffer == NULL || bufferSize <= 0)
+        return false;
+    buffer[0] = 0;
+
+    HWND source = ResolveHistoryComboEditControl(ctrl);
+    if (GetACP() != CP_UTF8 && !IsHistoryControlUnicode(ctrl))
+    {
+        SendMessage(ctrl, WM_GETTEXT, bufferSize, (LPARAM)buffer);
+        return true;
+    }
+
+    // Prefer the combo HWND so we read the same text WM_SETTEXT wrote into it.
+    HWND readFrom = IsWindowUnicode(ctrl) ? ctrl : source;
+    int length = GetWindowTextLengthW(readFrom);
+    if (length < 0)
+        length = 0;
+    std::vector<WCHAR> wide(length + 1);
+    int copied = GetWindowTextW(readFrom, wide.data(), length + 1);
+    if (copied < 0)
+        copied = 0;
+    wide[copied] = 0;
+
+    int written = WideCharToMultiByte(CP_UTF8, 0, wide.data(), copied, buffer, bufferSize - 1, NULL, NULL);
+    if (written < 0)
+        written = 0;
+    buffer[written] = 0;
+    return written < bufferSize - 1;
+}
+
+static void SetHistoryControlTextUtf8(HWND ctrl, const char* text)
+{
+    if (text == NULL)
+        text = "";
+    if (GetACP() != CP_UTF8 && !IsHistoryControlUnicode(ctrl))
+    {
+        SendMessage(ctrl, WM_SETTEXT, 0, (LPARAM)text);
+        return;
+    }
+
+    std::wstring wide = HistoryTextToWide(text);
+    if (IsHistoryControlUnicode(ctrl))
+    {
+        // Always set through the combo HWND. Writing only to the edit child lets a
+        // later CB_ADDSTRING replace the visible text with history[0] (Find Look in).
+        SendMessageW(ctrl, WM_SETTEXT, 0, (LPARAM)wide.c_str());
+    }
+    else
+        SendMessage(ctrl, WM_SETTEXT, 0, (LPARAM)text);
+}
+
+static void AddHistoryComboString(HWND hwnd, const char* text)
+{
+    if (IsHistoryControlUnicode(hwnd))
+    {
+        std::wstring wide = HistoryTextToWide(text);
+        SendMessageW(hwnd, CB_ADDSTRING, 0, (LPARAM)wide.c_str());
+    }
+    else
+        SendMessage(hwnd, CB_ADDSTRING, 0, (LPARAM)text);
+}
 
 void GetDefaultViewerLogFont(LOGFONT* lf)
 {
@@ -111,18 +211,17 @@ void HistoryComboBox(HWND hWindow, CTransferInfo& ti, int ctrlID, char* Text,
         {
             SendMessage(hwnd, CB_RESETCONTENT, 0, 0);
             SendMessage(hwnd, CB_LIMITTEXT, textLen - 1, 0);
-            int i;
-            for (i = 0; i < historySize; i++) // fill the combo-box list FIRST
-                if (history[i] != NULL)
-                    ComboAddStringUtf8(hwnd, history[i]);
-                else
-                    break;
-            SetControlTextUtf8(hwnd, Text); // set the text LAST so it is not overridden
+            SetHistoryControlTextUtf8(hwnd, Text);
         }
         else
         {
             if (!changeOnlyHistory)
-                GetControlTextUtf8(hwnd, Text, textLen);
+            {
+                GetHistoryControlTextUtf8(hwnd, Text, textLen);
+                SendMessage(hwnd, CB_RESETCONTENT, 0, 0);
+                SendMessage(hwnd, CB_LIMITTEXT, textLen - 1, 0);
+                SetHistoryControlTextUtf8(hwnd, Text);
+            }
 
             // hex mode handling
             if (hexMode)
@@ -199,19 +298,21 @@ void HistoryComboBox(HWND hWindow, CTransferInfo& ti, int ctrlID, char* Text,
                     }
                 }
             }
+        }
 
-            if (!changeOnlyHistory)
-            {
-                SendMessage(hwnd, CB_RESETCONTENT, 0, 0);
-                SendMessage(hwnd, CB_LIMITTEXT, textLen - 1, 0);
-                int i;
-                for (i = 0; i < historySize; i++) // fill the combo-box list
-                    if (history[i] != NULL)
-                        ComboAddStringUtf8(hwnd, history[i]);
-                    else
-                        break;
-                SetControlTextUtf8(hwnd, Text);
-            }
+        if (!changeOnlyHistory)
+        {
+            int i;
+            for (i = 0; i < historySize; i++) // fill the combo-box list
+                if (history[i] != NULL)
+                    AddHistoryComboString(hwnd, history[i]);
+                else
+                    break;
+
+            // Re-apply the transferred value after populating the list. On Unicode
+            // Find combos, CB_ADDSTRING can otherwise leave history[0] visible and
+            // Look in no longer follows the current panel path (#743).
+            SetHistoryControlTextUtf8(hwnd, Text);
         }
     }
 }
@@ -579,7 +680,8 @@ CViewerGoToOffsetDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 CViewerWindow::CViewerWindow(const char* fileName, CViewType type, const char* caption,
                              BOOL wholeCaption, CObjectOrigin origin,
                              int enumFileNamesSourceUID, int enumFileNamesLastFileIndex)
-    : CWindow(origin), LineOffset(300, 100),
+    : CWindow(origin), LineOffset(300, 100), LogicalLineStarts(1024, 1024),
+      DecodedWrapRowStarts(64, 64),
       FindDialog(HLanguage, IDD_FINDSET, IDD_FINDSET)
 {
     // GDI variables
@@ -600,6 +702,7 @@ CViewerWindow::CViewerWindow(const char* fileName, CViewType type, const char* c
     VisibleFirstDocumentLine = -1;
     CachedSelectionStart = CachedSelectionEnd = CachedSelectionLineCount = CachedSelectionCharacterCount = -1;
     CachedVerticalPageSize = -1;
+    LineNumberCacheOffset = LineNumberCacheLine = LineNumberCacheLineStart = -1;
     LayoutNeeded = TRUE;
 
     Width = Height = 0;
@@ -656,6 +759,9 @@ CViewerWindow::CViewerWindow(const char* fileName, CViewType type, const char* c
     MaxSeekY = -1;
     ViewSize = FileSize = 0;
     LastLineSize = FirstLineSize = 0;
+    PrevLineSizeCache = PrevLineSizeCacheSeekY = -1;
+    DecodedWrapCacheLineBegin = -1;
+    LogicalLineIndexComplete = FALSE;
     EnablePaint = TRUE;
     StartSelection = -1; // no selection yet
     EndSelection = -1;   // no selection yet
@@ -768,6 +874,7 @@ void CViewerWindow::FindNewSeekY(__int64 newSeekY, BOOL& fatalErr)
 {
     CALL_STACK_MESSAGE2("CViewerWindow::FindNewSeekY(%g,)", (double)newSeekY);
     fatalErr = FALSE;
+    __int64 oldSeekY = SeekY;
     if (newSeekY >= MaxSeekY)
         SeekY = MaxSeekY;
     else
@@ -781,6 +888,8 @@ void CViewerWindow::FindNewSeekY(__int64 newSeekY, BOOL& fatalErr)
                 SeekY = newSeekY;
         }
     }
+    if (SeekY != oldSeekY)
+        PrevLineSizeCacheSeekY = -1;
 }
 
 int TranslateU2T(int u, BOOL left, int hexOffsetLength)
@@ -2660,6 +2769,45 @@ int CViewerWindow::GetDocumentTop() const
     return ViewerMenuBar != NULL ? ViewerMenuBar->GetNeededHeight() : 0;
 }
 
+int CViewerWindow::FindLogicalLineIndexForOffset(__int64 offset) const
+{
+    if (LogicalLineStarts.Count == 0)
+        return -1;
+    int lo = 0;
+    int hi = LogicalLineStarts.Count - 1;
+    int best = -1;
+    while (lo <= hi)
+    {
+        int mid = lo + (hi - lo) / 2;
+        __int64 start = LogicalLineStarts.At(mid);
+        if (start < 0)
+        {
+            hi = mid - 1;
+            continue;
+        }
+        if (start <= offset)
+        {
+            best = mid;
+            lo = mid + 1;
+        }
+        else
+            hi = mid - 1;
+    }
+    return best;
+}
+
+BOOL CViewerWindow::EnsureLogicalLineIndex(BOOL& fatalErr)
+{
+    fatalErr = FALSE;
+    if (LogicalLineIndexComplete && LogicalLineStarts.Count > 0)
+        return TRUE;
+    // One sequential scan fills LogicalLineStarts for the whole file.  After
+    // that, line-up and gutter queries are binary searches (#746).
+    GetDocumentLineNumber(FileSize);
+    LogicalLineIndexComplete = LogicalLineStarts.Count > 0;
+    return LogicalLineIndexComplete;
+}
+
 __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
 {
     if (offset <= TextStartOffset())
@@ -2675,6 +2823,66 @@ __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
         return offset / 16 + 1;
     }
 
+    // Reuse the last answer for the same offset (status bar + gutter both ask).
+    if (LineNumberCacheOffset == offset && LineNumberCacheLine > 0)
+    {
+        if (lineStart)
+            *lineStart = LineNumberCacheLineStart;
+        return LineNumberCacheLine;
+    }
+
+    auto rememberLineStart = [&](__int64 line, __int64 lineStartOff)
+    {
+        if (line < 1 || lineStartOff < 0)
+            return;
+        int index = (int)(line - 1);
+        while (LogicalLineStarts.Count <= index)
+            LogicalLineStarts.Add(-1);
+        if (LogicalLineStarts[index] < 0)
+            LogicalLineStarts[index] = lineStartOff;
+    };
+
+    // Fast path: complete index already covers this offset.
+    if (LogicalLineIndexComplete && LogicalLineStarts.Count > 0)
+    {
+        int idx = FindLogicalLineIndexForOffset(offset);
+        if (idx >= 0 && LogicalLineStarts[idx] >= 0)
+        {
+            if (lineStart)
+                *lineStart = LogicalLineStarts[idx];
+            LineNumberCacheOffset = offset;
+            LineNumberCacheLine = idx + 1;
+            LineNumberCacheLineStart = LogicalLineStarts[idx];
+            return LineNumberCacheLine;
+        }
+    }
+
+    auto startFromIndex = [&](__int64& line, __int64& lastNewline, __int64& pos, BOOL decodedStarts)
+    {
+        line = 1;
+        lastNewline = decodedStarts ? TextStartOffset() : TextStartOffset() - 1;
+        pos = TextStartOffset();
+
+        if (LineNumberCacheOffset >= 0 && offset >= LineNumberCacheOffset && LineNumberCacheLine > 0)
+        {
+            line = LineNumberCacheLine;
+            lastNewline = decodedStarts ? LineNumberCacheLineStart : LineNumberCacheLineStart - 1;
+            pos = LineNumberCacheOffset;
+            return;
+        }
+
+        int idx = FindLogicalLineIndexForOffset(offset);
+        // Prefer a filled entry at or before offset; if holes exist, walk back.
+        while (idx >= 0 && LogicalLineStarts[idx] < 0)
+            idx--;
+        if (idx >= 0)
+        {
+            line = idx + 1;
+            pos = LogicalLineStarts[idx];
+            lastNewline = decodedStarts ? pos : pos - 1;
+        }
+    };
+
     if (HasDecodedTextMode())
     {
         const __int64 savedSeek = Seek;
@@ -2684,6 +2892,8 @@ __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
         __int64 pos = TextStartOffset();
         __int64 pendingCREnd = -1;
         BOOL fatalErr = FALSE;
+        startFromIndex(line, lastNewline, pos, TRUE);
+        rememberLineStart(line, lastNewline);
         while (pos < offset)
         {
             __int64 read = Prepare(NULL, pos, min((__int64)VIEW_BUFFER_SIZE, offset - pos), fatalErr);
@@ -2703,6 +2913,7 @@ __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
                     {
                         lastNewline = rawEnd;
                         ++line;
+                        rememberLineStart(line, lastNewline);
                         pendingCREnd = -1;
                         continue;
                     }
@@ -2710,6 +2921,7 @@ __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
                     {
                         lastNewline = pendingCREnd;
                         ++line;
+                        rememberLineStart(line, lastNewline);
                     }
                     pendingCREnd = -1;
                 }
@@ -2719,11 +2931,13 @@ __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
                 {
                     lastNewline = rawEnd;
                     ++line;
+                    rememberLineStart(line, lastNewline);
                 }
                 else if (scalar == 0 && Configuration.EOL_NULL)
                 {
                     lastNewline = rawEnd;
                     ++line;
+                    rememberLineStart(line, lastNewline);
                 }
             }
             pos += read;
@@ -2732,9 +2946,15 @@ __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
         {
             lastNewline = pendingCREnd;
             ++line;
+            rememberLineStart(line, lastNewline);
         }
         if (lineStart)
             *lineStart = lastNewline;
+        LineNumberCacheOffset = offset;
+        LineNumberCacheLine = line;
+        LineNumberCacheLineStart = lastNewline;
+        if (offset >= FileSize)
+            LogicalLineIndexComplete = TRUE;
         if (savedLoaded > 0)
         {
             BOOL restoreFatalErr = FALSE;
@@ -2753,6 +2973,8 @@ __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
     __int64 pendingCREnd = -1;
     __int64 pos = TextStartOffset();
     BOOL fatalErr = FALSE;
+    startFromIndex(line, lastNewline, pos, FALSE);
+    rememberLineStart(line, lastNewline + 1);
     while (pos < offset)
     {
         __int64 read = Prepare(NULL, pos, min((__int64)VIEW_BUFFER_SIZE, offset - pos), fatalErr);
@@ -2768,6 +2990,7 @@ __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
                 {
                     lastNewline = pos + i;
                     ++line;
+                    rememberLineStart(line, lastNewline + 1);
                     pendingCREnd = -1;
                     continue;
                 }
@@ -2775,6 +2998,7 @@ __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
                 {
                     lastNewline = pendingCREnd;
                     ++line;
+                    rememberLineStart(line, lastNewline + 1);
                 }
                 pendingCREnd = -1;
             }
@@ -2788,6 +3012,7 @@ __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
                 {
                     lastNewline = pos + i;
                     ++line;
+                    rememberLineStart(line, lastNewline + 1);
                 }
             }
             else if (ch == 0)
@@ -2796,6 +3021,7 @@ __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
                 {
                     lastNewline = pos + i;
                     ++line;
+                    rememberLineStart(line, lastNewline + 1);
                 }
             }
         }
@@ -2805,9 +3031,15 @@ __int64 CViewerWindow::GetDocumentLineNumber(__int64 offset, __int64* lineStart)
     {
         lastNewline = pendingCREnd;
         ++line;
+        rememberLineStart(line, lastNewline + 1);
     }
     if (lineStart)
         *lineStart = lastNewline + 1; // character after the last EOL is the start of the current logical line
+    LineNumberCacheOffset = offset;
+    LineNumberCacheLine = line;
+    LineNumberCacheLineStart = lastNewline + 1;
+    if (offset >= FileSize)
+        LogicalLineIndexComplete = TRUE;
     if (savedLoaded > 0)
     {
         BOOL restoreFatalErr = FALSE;

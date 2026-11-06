@@ -1,5 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Open Salamander Authors
+# SPDX-FileCopyrightText: 2026 Open Samandarin Authors
 # SPDX-License-Identifier: GPL-2.0-or-later
+# | Date | Summary | Reason | Ticket | Model |
+# | 2026-11-05 | Run the Find Look in contract test. | Keep HistoryComboBox from replacing the current panel path with history[0]. | https://github.com/KRtkovo-eu-AI/salamander/issues/743 | Composer |
+# | 2026-11-05 | Run the shell-extension crash-protection contract test. | Faulty third-party shell extensions must not TerminateProcess Salamander. | https://github.com/KRtkovo-eu-AI/salamander/issues/773 | Composer |
+# | 2026-11-05 | Run the SVG FS-panel icon contract test. | Salamatrix/SVG panel icons must keep 16/32/48 sizes and a clean alpha path. | | Composer |
+# | 2026-11-05 | Run the JSON Web Viewer extension contract tests. | Guard the Salamatrix WebView2 JSON viewer package layout and session prep. |  | Composer |
+# | 2026-11-04 | Retry a native build that reaches the runner limit, and wait up to 119 seconds. | The first MSBuild codegen step reached the old 110 second cap on a cold runner. | https://github.com/KRtkovo-eu-AI/salamander/issues/777 | Grok 4.7 |
+# | 2026-11-04 | Run the panel-toolbar customize contract test. | The panel and middle toolbar catalogs must stay the same set of commands. | https://github.com/KRtkovo-eu-AI/salamander/issues/777 | Grok 4.7 |
+# | 2026-11-04 | Keep the viewer hex and Quick Search contract tests together. | Both entries were added at the same place in the native test list. | https://github.com/KRtkovo-eu-AI/salamander/pull/768 | Grok 4.7 |
 
 [CmdletBinding()]
 param(
@@ -12,7 +21,7 @@ param(
     [string]$ResultsPath = 'test-results/native.xml',
 
     [ValidateRange(1, 119)]
-    [int]$CommandTimeoutSeconds = 110
+    [int]$CommandTimeoutSeconds = 119
 )
 
 $ErrorActionPreference = 'Stop'
@@ -165,7 +174,7 @@ try {
     foreach ($project in $testProjects) {
         $testName = [System.IO.Path]::GetFileNameWithoutExtension($project.Name)
         Write-Host "Building $testName..."
-        $buildResult = Invoke-TestProcess -FilePath $msbuild -Arguments @(
+        $buildArguments = @(
             $project.FullName,
             '/m',
             '/t:Build',
@@ -176,7 +185,26 @@ try {
             '/p:RestoreFallbackFolders=',
             '/nr:false',
             '/v:minimal'
-        ) -WorkingDirectory $repositoryRoot
+        )
+        $buildResult = Invoke-TestProcess -FilePath $msbuild -Arguments $buildArguments `
+            -WorkingDirectory $repositoryRoot
+        # The first cold codegen can sit past the cap. The compiler is warm on the retry.
+        if ($buildResult.TimedOut) {
+            $firstOutput = $buildResult.Output
+            Write-Host "Build of $testName exceeded $CommandTimeoutSeconds seconds; retrying once."
+            Start-Sleep -Seconds 3
+            $buildResult = Invoke-TestProcess -FilePath $msbuild -Arguments $buildArguments `
+                -WorkingDirectory $repositoryRoot
+            if ($buildResult.TimedOut -or $buildResult.ExitCode -ne 0) {
+                $buildResult.Output = @(
+                    'First build exceeded the timeout.',
+                    $firstOutput,
+                    '',
+                    'Retry:',
+                    $buildResult.Output
+                ) -join [Environment]::NewLine
+            }
+        }
         if ($buildResult.ExitCode -ne 0 -or $buildResult.TimedOut) {
             Add-TestResult -ClassName 'native-build' -Name $testName `
                 -ProcessResult $buildResult
@@ -311,6 +339,14 @@ try {
             )
         },
         @{
+            Name = 'panel_toolbar_customize_contract_tests'
+            Arguments = @(
+                '-B',
+                (Join-Path $repositoryRoot `
+                    'src\tests\panel_toolbar_customize_contract_tests.py')
+            )
+        },
+        @{
             Name = 'association_icon_cache_tests'
             Arguments = @(
                 '-B',
@@ -343,6 +379,14 @@ try {
             )
         },
         @{
+            Name = 'json_web_viewer_extension_tests'
+            Arguments = @(
+                '-B',
+                (Join-Path $repositoryRoot `
+                    'src\tests\json_web_viewer_extension_tests.py')
+            )
+        },
+        @{
             Name = 'viewer_mask_persistence_contract_tests'
             Arguments = @(
                 '-B',
@@ -356,6 +400,14 @@ try {
                 '-B',
                 (Join-Path $repositoryRoot `
                     'src\tests\pictview_native_decoder_contract_tests.py')
+            )
+        },
+        @{
+            Name = 'svg_fs_panel_icon_contract_tests'
+            Arguments = @(
+                '-B',
+                (Join-Path $repositoryRoot `
+                    'src\tests\svg_fs_panel_icon_contract_tests.py')
             )
         },
         @{
@@ -399,6 +451,14 @@ try {
             )
         },
         @{
+            Name = 'shell_extension_crash_protection_contract_tests'
+            Arguments = @(
+                '-B',
+                (Join-Path $repositoryRoot `
+                    'src\tests\shell_extension_crash_protection_contract_tests.py')
+            )
+        },
+        @{
             Name = 'viewer_live_log_contract_tests'
             Arguments = @(
                 '-B',
@@ -412,6 +472,14 @@ try {
                 '-B',
                 (Join-Path $repositoryRoot `
                     'src\tests\copy_move_scheduling_contract_tests.py')
+            )
+        },
+        @{
+            Name = 'find_look_in_contract_tests'
+            Arguments = @(
+                '-B',
+                (Join-Path $repositoryRoot `
+                    'src\tests\find_look_in_contract_tests.py')
             )
         },
         @{

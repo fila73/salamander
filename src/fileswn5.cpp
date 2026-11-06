@@ -937,6 +937,8 @@ static void BuildArchiveCacheKey(char* key, int keySize, const char* archiveName
     if (archiveName != NULL && archiveName[0] != 0)
     {
         std::wstring wideArchive = FileActionTextToWide(archiveName);
+        if (wideArchive.length() >= MAX_PATH)
+            wideArchive = SalPathAddExtendedPrefixW(wideArchive.c_str());
         WIN32_FILE_ATTRIBUTE_DATA attr;
         if (!wideArchive.empty() && GetFileAttributesExW(wideArchive.c_str(), GetFileExInfoStandard, &attr))
         {

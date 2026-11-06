@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# | Date | Summary | Reason | Ticket | Model |
+# | 2026-11-06 | Expect short Salamatrix extension/command IDs. | Packages dropped the OpenSalamander. prefix; old IDs failed CI. | | Composer |
+# | 2026-11-05 | Require Salamatrix FS SVG icons at 16/32/48. | Thumbnail view asked for 48px icons but SVG items stayed at 16px. | | Composer |
+# | 2026-11-04 | Require PR test reports to stay on the job summary. | Separate check runs were attached to the Source Code Growth workflow. | | Grok 4.7 |
+# | 2026-11-04 | Require Install to follow the selected package. | One scheduled extension disabled Install for every other row. | | Grok 4.7 |
+# | 2026-11-04 | Require late extension installs to be integrated after startup. | A restart that overlaps the install helper left the package out of Plugin Manager. | | Grok 4.7 |
+# | 2026-11-04 | Require plug-in DLLs to stay mapped until every Release returns. | Exit crash in an unloaded runtime plug-in. | https://github.com/KRtkovo-eu-AI/salamander/issues/770 https://github.com/KRtkovo-eu-AI/salamander/issues/750 | Grok 4.7 |
 """Fast source-level regression checks for Salamatrix integration contracts."""
 
 from pathlib import Path
@@ -431,6 +438,22 @@ def main() -> int:
         r"MaxConnectionsPerServer\s*=\s*"
         r"PluginUpdatesDialog\.CatalogImageDownloadConcurrency",
         "Samandarin catalog icons are not deduplicated and loaded with bounded concurrency")
+    require(
+        samandarin_entry,
+        r"HashSet<string> _scheduledPackageKeys = new\(StringComparer\.OrdinalIgnoreCase\).*?"
+        r"!IsPackageScheduled\(row\).*?"
+        r"_scheduledPackageKeys\.Add\(PackageScheduleKey\(package\)\)",
+        "Plugin Updates keeps Install disabled after the selection changes")
+    require_absent(
+        samandarin_entry,
+        r"_installScheduled",
+        "Plugin Updates still disables Install for every row after one install")
+    require(
+        read("src/plugins/samandarin/managed/PluginInstaller.cs"),
+        r"Local\\OpenSamandarin\.PackageInstall.*?"
+        r"Invoke-PackageInstallLock \{\{.*?"
+        r"extensions\.ver",
+        "Concurrent package installs can overwrite extensions.ver")
 
     require(dialogs, r"HasStablePluginKey\(p->RegKeyName, \"SALAMATRIX\"\).*?IsPluginName\(p->Name, \"Salamatrix Framework\"\)",
             "Salamatrix Framework key/name fallback is missing")
@@ -675,12 +698,14 @@ def main() -> int:
                                r'Report native and source-contract tests.*?'
                                r'dorny/test-reporter@v3.*?'
                                r'reporter:\s*java-junit.*?'
-                               r'use-actions-summary:\s*false.*?'
+                               r'use-actions-summary:\s*true.*?'
                                r'Report Python tests.*?'
                                r'dorny/test-reporter@v3.*?'
                                r'reporter:\s*python-xunit.*?'
-                               r'use-actions-summary:\s*false',
-            "same-repository PR workflow does not publish both Test Reporter checks")
+                               r'use-actions-summary:\s*true',
+            "same-repository PR tests do not publish both reports on this job summary")
+    require_absent(pr_tests_workflow, r'use-actions-summary:\s*false',
+                   "PR tests create check runs that GitHub can attach to Source Code Growth")
     require(pr_tests_workflow, r'head\.repo\.full_name == github\.repository',
             "direct Test Reporter checks are not limited to writable PR tokens")
     require(pr_tests_workflow,
@@ -710,11 +735,13 @@ def main() -> int:
             r'head_repository\.full_name == github\.repository.*?'
             r'head_repository\.full_name != github\.repository.*?'
             r'dorny/test-reporter@v3.*?'
-            r'use-actions-summary:\s*false.*?'
+            r'use-actions-summary:\s*true.*?'
             r'head_repository\.full_name != github\.repository.*?'
             r'dorny/test-reporter@v3.*?'
-            r'use-actions-summary:\s*false',
+            r'use-actions-summary:\s*true',
             "workflow_run Test Reporter fallback is not limited to fork PRs")
+    require_absent(pr_test_report_workflow, r'use-actions-summary:\s*false',
+                   "fork test reports create check runs that GitHub can attach to Source Code Growth")
     require(runtime_protocol, r'valueEnd = position.*?'
                               r"json\[valueEnd - 1\] == '\\n'.*?"
                               r'value->assign\(json, valueStart, valueEnd - valueStart\)',
@@ -1415,6 +1442,16 @@ def main() -> int:
         r'salamander\.ui\.renderIcon.*?CreateSVGIcon.*?'
         r'Get-BuilderPreviewImage.*?item\.Image',
         "Extension Menu Builder preview does not render command SVG icons")
+    require(
+        packages,
+        r"SalamatrixIconSizeToPixels\(int iconSize\).*?"
+        r"case SALICONSIZE_48:\s*return 48;.*?"
+        r"GetPluginIcon\([\s\S]*?CreateSVGIcon\(preferred\.c_str\(\), pixels\)",
+        "Salamatrix FS SVG icons do not honor SALICONSIZE_48 for thumbnail/tiles views")
+    require_absent(
+        packages,
+        r"CreateSVGIcon\([^;]*iconSize == SALICONSIZE_32 \? 32 : 16\)",
+        "Salamatrix FS SVG icons still collapse non-32 sizes to 16px")
     require(packages, r"SALAMATRIX_SERVICE_SCRIPT_RUNNER", "legacy compatibility script runner fallback is missing")
     require(packages, r"RuntimeAdapterFlagCompatibility", "legacy fallback is not limited to compatibility adapters")
     require(
@@ -1792,6 +1829,49 @@ def main() -> int:
         r'CPlugins::UnloadAll\(.*?ReportShutdownProgress\(\s*'
         r'ssdpUnloadingPlugins, Data\[i\]->Name',
         "plug-in unload progress does not identify each loaded plug-in")
+    require(
+        plugins2,
+        r'CPlugins::UnloadAll\(.*?Unload\(parent, FALSE, FALSE\).*?'
+        r'FreeDeferredModule\(\)',
+        "exit still unmaps a plug-in DLL before every plug-in Release returns")
+    require(
+        plugins1,
+        r'BOOL CPluginData::Unload\(HWND parent, BOOL ask, BOOL freeLibrary\).*?'
+        r'if \(freeMappedModule && !freeLibrary\)\s*'
+        r'DeferredModule = DLL;.*?'
+        r'void CPluginData::FreeDeferredModule\(\).*?'
+        r'HANDLES\(FreeLibrary\(module\)\)',
+        "deferred plug-in unload does not keep the DLL mapped through Release")
+    require(
+        packages,
+        r'void PackageManager::DiscoverMissingPackages\(.*?'
+        r'void PackageManager::IntegrateNewlyInstalledExtensions\(\).*?'
+        r'DiscoverMissingPackages\(Roots\[index\]\)',
+        "extension installs that finish after startup are not integrated")
+    require(
+        packages,
+        r'bool PackageManager::IsInstallCommitted\(.*?'
+        r'if \(!IsInstallCommitted\(directory\)\)\s*'
+        r'return;',
+        "extension discovery does not wait until extensions.ver commits the copy")
+    require(
+        packages,
+        r'bool notReady = false;.*?'
+        r'AcceptInstalledExtensionManifest\(line\.substr\(colon \+ 1\), &notReady\).*?'
+        r'waitingForManifest = true;',
+        "an unreadable extension manifest still consumes its install record")
+    require(
+        packages,
+        r'RefreshInProgress = FALSE;\s*StartExtensionInstallWatch\(\)',
+        "startup does not keep watching for an extension install that is still being copied")
+    require(
+        read("src/plugins/salamatrix/salamatrix.def"),
+        r"EXPORTS SalamatrixIntegrateInstalledExtensions",
+        "Salamatrix does not export late extension-install integration")
+    require(
+        dialogs,
+        r'GetProcAddress\(salamatrix, "SalamatrixIntegrateInstalledExtensions"\)',
+        "Plugin Manager does not integrate extension installs finished after startup")
     for phase in (
             "ssdpUnregisteringToolbarButtons",
             "ssdpUnregisteringExtensions",
@@ -1951,10 +2031,10 @@ def main() -> int:
     command_ids = {
         command.get("id") for command in navigator_manifest.get("commands", [])
     }
-    if "OpenSalamander.GitWorktreeNavigator.commit" not in command_ids:
+    if "GitWorktreeNavigator.commit" not in command_ids:
         raise AssertionError(
             "Git Worktree Navigator does not expose Commit in the extension menu")
-    if ("OpenSalamander.GitWorktreeNavigator.createLocalRepository"
+    if ("GitWorktreeNavigator.createLocalRepository"
             not in command_ids):
         raise AssertionError(
             "Git Worktree Navigator does not expose local repository creation")
@@ -2128,7 +2208,7 @@ def main() -> int:
                 set(file_system.get("actions", {})) !=
                 {"endTask", "endProcessTree", "openFileLocation", "properties"} or
                 set(localized.get("commands", {})) !=
-                {"OpenSalamander.ProcessExplorer.open"}):
+                {"ProcessExplorer.open"}):
             raise AssertionError(
                 f"process explorer locale metadata is incomplete: {locale}")
         keys = set(localized.get("strings", {}))
@@ -2157,7 +2237,7 @@ def main() -> int:
     if (len(commands) != 1 or not commands[0].get("toolbar") or
             commands[0].get("menu") != "none" or
             commands[0].get("path") !=
-            "salamatrix:OpenSalamander.ProcessExplorer!processes" or
+            "salamatrix:ProcessExplorer!processes" or
             commands[0].get("handler")):
         raise AssertionError("Process Explorer toolbar command is incomplete")
     require(

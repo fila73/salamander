@@ -1,5 +1,8 @@
-// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2026 Open Samandarin Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
+// | Date | Summary | Reason | Ticket | Model |
+// | 2026-11-05 | Survive faulty shell extension SEH in Recycle Bin deletes. | SHFileOperation shell handlers must not terminate Salamander. | https://github.com/KRtkovo-eu-AI/salamander/issues/773 | Composer |
 // CommentsTranslationProject: TRANSLATED
 
 #include "precomp.h"
@@ -93,8 +96,9 @@ int DeleteThroughRecycleBinAux(SHFILEOPSTRUCT* fo)
     {
         return SHFileOperation(fo);
     }
-    __except (CCallStack::HandleException(GetExceptionInformation(), 5))
+    __except (SHELL_EXTENSION_EXCEPTION_FILTER)
     {
+        TRACE_E("Faulty shell extension threw an exception in SHFileOperation (Recycle Bin).");
         FGIExceptionHasOccured++;
     }
     return 1; // != 0
@@ -424,15 +428,14 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
                                 else
                                     selDirs = 1;
                             }
-                            char fallbackPath[SAL_MAX_PATH];
-                            lstrcpyn(fallbackPath, path, SAL_MAX_PATH);
+                            const std::string fallbackPath(path);
                             if (!target->GetPluginFS()->CopyOrMoveFromDiskToFS(type == atCopy, 1,
                                                                                target->GetPluginFS()->GetPluginFSName(),
                                                                                HWindow, NULL, NULL, NULL,
                                                                                selFiles, selDirs, path, NULL))
                             {
                                 if (path[0] == 0)
-                                    lstrcpyn(path, fallbackPath, SAL_MAX_PATH);
+                                    lstrcpyn(path, fallbackPath.c_str(), SAL_MAX_PATH);
                             }
                             // convert the path to external format (before showing it in the dialog)
                             PluginFSConvertPathToExternal(path);

@@ -1,5 +1,9 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2026 Open Samandarin Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
+// | Date | Summary | Reason | Ticket | Model |
+// | 2026-11-04 | Keep plug-in DLLs mapped until every plug-in Release returns. | Unloading a runtime plug-in before Salamatrix joins its pump thread crashes on exit. | https://github.com/KRtkovo-eu-AI/salamander/issues/770 https://github.com/KRtkovo-eu-AI/salamander/issues/750 | Grok 4.7 |
+// | 2026-11-04 | Return a panel operations object to plug-ins. | Portable Devices needs Salamander's standard progress dialog. | | Grok 4.7 |
 // CommentsTranslationProject: TRANSLATED
 
 #pragma once
@@ -1890,11 +1894,15 @@ public:
 // CSalamanderGeneral
 //
 
+class CSalamanderForOperations;
+
 class CSalamanderGeneral : public CSalamanderGeneralAbstract
 {
 protected:
     CPluginInterfaceAbstract* Plugin; // plug-in used by this iface; !!! note: may be NULL
                                       // (plugin not loaded) or -1 (during the plugin's entry point)
+
+    CSalamanderForOperations* PanelOperations; // one panel operations object for this plug-in, or NULL
 
     char HelpFileName[MAX_PATH]; // if not empty, this is the name (without path) of the .chm help file used by this plugin (optimization only, not stored anywhere)
 
@@ -2415,6 +2423,7 @@ public:
         const char* ownerKey, const char* ownerName,
         const char* stableId, const char* name,
         const char* description);
+    virtual CSalamanderForOperationsAbstract* WINAPI GetSalamanderForOperations(HWND panel);
 };
 
 //
@@ -2560,6 +2569,7 @@ public:
 
 protected:
     HINSTANCE DLL;                                                         // handle of the plug-in’s DLL file
+    HINSTANCE DeferredModule;                                              // mapped until every plug-in Release has returned
     CPluginInterfaceEncapsulation PluginIface;                             // plugin interface (set to -1 during the entry point call)
     CPluginInterfaceForArchiverEncapsulation PluginIfaceForArchiver;       // plugin interface: archiver
     CPluginInterfaceForViewerEncapsulation PluginIfaceForViewer;           // plugin interface: viewer
@@ -2621,8 +2631,14 @@ public:
 
     // unloads the DLL; if 'ask' is TRUE, it prompts to Save when "save on exit" is enabled,
     // 'parent' is the parent window for message boxes; if 'ask' is FALSE it saves without asking,
-    // returns TRUE if the DLL was unloaded
-    BOOL Unload(HWND parent, BOOL ask);
+    // returns TRUE if the DLL was unloaded. When 'freeLibrary' is FALSE, Release runs
+    // but the module stays mapped until FreeDeferredModule. Exit uses that so every
+    // plug-in Release finishes before any plug-in DLL is unmapped: Salamatrix pump
+    // threads execute inside the runtime plug-ins.
+    BOOL Unload(HWND parent, BOOL ask, BOOL freeLibrary = TRUE);
+
+    // unmaps a module left loaded by Unload(..., FALSE)
+    void FreeDeferredModule();
 
     // checks if the plugin can be removed; 'parent' is the parent message box window,
     // 'index' is this plugin index in Plugins; returns TRUE if the plugin can be removed

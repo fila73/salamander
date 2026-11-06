@@ -106,21 +106,6 @@ function Test-FreshCertumSignature {
     return (Get-Item -LiteralPath $Path).LastWriteTime -ge $fileAgeLimit
 }
 
-function Copy-VcpkgDllIfNeeded {
-    param(
-        [string]$SourcePath,
-        [string]$DestinationPath,
-        [string]$PayloadPath
-    )
-
-    $destinationDirectory = Split-Path -Parent $DestinationPath
-    New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
-
-    if (-not (Test-Path -LiteralPath $DestinationPath -PathType Leaf)) {
-        Copy-Item -LiteralPath $SourcePath -Destination $DestinationPath -Force
-        return 'copied'
-    }
-
 function Get-FileSha256 {
     param([string]$Path)
     if (Get-Command -Name Get-FileHash -ErrorAction SilentlyContinue) {
@@ -137,6 +122,21 @@ function Get-FileSha256 {
         $hasher.Dispose()
     }
 }
+
+function Copy-VcpkgDllIfNeeded {
+    param(
+        [string]$SourcePath,
+        [string]$DestinationPath,
+        [string]$PayloadPath
+    )
+
+    $destinationDirectory = Split-Path -Parent $DestinationPath
+    New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+
+    if (-not (Test-Path -LiteralPath $DestinationPath -PathType Leaf)) {
+        Copy-Item -LiteralPath $SourcePath -Destination $DestinationPath -Force
+        return 'copied'
+    }
 
     $sourceHash = Get-FileSha256 -Path $SourcePath
     $destinationHash = Get-FileSha256 -Path $DestinationPath
