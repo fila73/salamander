@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <string>
-
 //****************************************************************************
 //
 // CProgressBar
@@ -488,10 +486,3 @@ inline COLORREF LightenColorSimple(COLORREF color, int amount)
         b = 255;
     return RGB(r, g, b);
 }
-
-// ComboBox and Edit UTF-8 text synchronization helpers
-HWND ResolveComboEditControl(HWND ctrl);
-bool Utf8ToWideString(const char* text, int count, std::wstring& wide);
-bool GetControlTextUtf8(HWND ctrl, char* buffer, int bufferSize);
-void SetControlTextUtf8(HWND ctrl, const char* text);
-LRESULT ComboAddStringUtf8(HWND combo, const char* text);

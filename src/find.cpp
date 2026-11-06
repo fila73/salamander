@@ -7,7 +7,6 @@
 #include "cfgdlg.h"
 #include "find.h"
 #include "md5.h"
-#include "gui.h"
 #include "common/widepath.h"
 
 char* FindNamedHistory[FIND_NAMED_HISTORY_SIZE];

@@ -2388,6 +2388,7 @@ BOOL WINAPI CPluginFSInterface::CopyOrMoveFromFS(BOOL Copy, int Mode,
         {
             if ((Mode == 1) || (Mode == 2))
             {
+                int Panel;
                 if (GetPanel(Panel, true))
                 {
                     char Buf[MAX_PATH];
